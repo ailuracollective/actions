@@ -63,6 +63,7 @@ setup() {
   export INPUT_LINKED_ISSUE_SOURCES='github'
   export INPUT_LINEAR_APPROVED_LABEL='approved'
   export INPUT_AUTO_LABEL_NAME='status:needs-review'
+  export INPUT_SKIP_ACTORS=''
   export INPUT_ENABLE_AUTO_LABEL=true
   export PR_TITLE='' PR_BODY='' PR_LABELS='[]' HEAD_REF='' AUTHOR_LOGIN='' BASE_SHA=base1234
   export PR_BASE_SHA=base1234 EVENT_SHA=eventsha
@@ -505,6 +506,84 @@ export GH_STUB_ISSUE_EDIT=fail
 out=$(run_check auto-label)
 assert_eq 'a label that does not exist is a skip, not a failure' skip "$(status_of auto-label)"
 assert_contains 'warns rather than failing' 'warning::' "$out"
+
+# ===============================================================================================
+group 'skip-actors: the exemption list'
+# ===============================================================================================
+# The whole point: dependabot[bot] branches are `dependabot/npm_and_yarn/pkg-1.2.3`, which fails both
+# the type regex and the ownership comparison. No configurable prefix can fix the second one, so the
+# exemption is the mechanism.
+setup; export HEAD_REF='dependabot/npm_and_yarn/pkg-1.2.3' AUTHOR_LOGIN='dependabot[bot]'
+export INPUT_SKIP_ACTORS='dependabot[bot]'
+run_check branch-name >/dev/null
+assert_eq 'an exempt author skips instead of failing' skip "$(status_of branch-name)"
+assert_contains 'the skip names the exempt actor' 'dependabot[bot]' "$(cat "$RESULTS_DIR/branch-name.msg")"
+
+# A skip is not a pass: it counts as a non-failure, so a required status is still satisfied, but the
+# summary must not claim the check validated anything.
+setup; export HEAD_REF='dependabot/npm_and_yarn/pkg-1.2.3' AUTHOR_LOGIN='dependabot[bot]'
+export INPUT_SKIP_ACTORS='dependabot[bot]'
+run_check branch-name >/dev/null
+report_for "$BRV_CHECK_LIST" "$BRV_LABEL_LIST" 'Branch validation' >/dev/null
+assert_eq 'an exempt actor still satisfies a required status' 0 "$?"
+assert_contains 'the summary calls it skipped, not passed' 'skipped' "$(cat "$GITHUB_STEP_SUMMARY")"
+assert_not_contains 'and does not claim it was validated' '1 checks passed' "$(cat "$GITHUB_STEP_SUMMARY")"
+
+# GitHub logins are case-insensitive, and so is this list.
+setup; export HEAD_REF='dependabot/npm_and_yarn/pkg-1.2.3' AUTHOR_LOGIN='DependaBot[BOT]'
+export INPUT_SKIP_ACTORS='dependabot[bot]'
+run_check branch-name >/dev/null
+assert_eq 'a differently cased login still matches' skip "$(status_of branch-name)"
+
+setup; export HEAD_REF='dependabot/npm_and_yarn/pkg-1.2.3' AUTHOR_LOGIN='dependabot[bot]'
+export INPUT_SKIP_ACTORS='DependaBot[BOT]'
+run_check branch-name >/dev/null
+assert_eq 'a differently cased list entry still matches' skip "$(status_of branch-name)"
+
+# The substring trap. `bot` is a list entry a careless maintainer would write; it must not exempt
+# `robotics-team`, and neither must `dependabot` exempt `dependabot-malicious-fork`.
+setup; export HEAD_REF='robotics-team/feat/x' AUTHOR_LOGIN='robotics-team'
+export INPUT_SKIP_ACTORS='bot'
+run_check branch-name >/dev/null
+assert_eq 'a list of bot does NOT exempt robotics-team' pass "$(status_of branch-name)"
+
+setup; export HEAD_REF='dependabot-malicious-fork/feat/x' AUTHOR_LOGIN='dependabot-malicious-fork'
+export INPUT_SKIP_ACTORS='dependabot'
+run_check branch-name >/dev/null
+assert_eq 'a list of dependabot does NOT exempt dependabot-malicious-fork' pass "$(status_of branch-name)"
+
+# Whitespace around entries is tolerated; the entry itself is still whole-string.
+setup; export HEAD_REF='dependabot/npm_and_yarn/pkg-1.2.3' AUTHOR_LOGIN='dependabot[bot]'
+export INPUT_SKIP_ACTORS=' janedoe , dependabot[bot] , robotics-team '
+run_check branch-name >/dev/null
+assert_eq 'a padded multi-entry list matches only its own entry' skip "$(status_of branch-name)"
+
+# The exemption is action-wide, so all five PR checks honour it, and each records the named skip.
+setup; export AUTHOR_LOGIN='dependabot[bot]' INPUT_SKIP_ACTORS='dependabot[bot]'
+export PR_TITLE='nope' PR_BODY='Refs #12' PR_LABELS='[]'
+for check in linked-issue type-label pr-title-length pr-title-conventional pr-body-structure; do
+  run_check "$check" >/dev/null
+  assert_eq "the exempt actor skips $check" skip "$(status_of "$check")"
+done
+assert_contains 'each skip names the actor' 'dependabot[bot]' "$(cat "$RESULTS_DIR"/*.msg)"
+
+# The regression guard: the default is empty, so an author nobody listed is validated exactly as
+# before. Both directions are asserted, because "exempts nobody" must not become "exempts everyone".
+setup; export HEAD_REF='robotics-team/feat/x' AUTHOR_LOGIN='robotics-team'
+run_check branch-name >/dev/null
+assert_eq 'an empty list exempts nobody' pass "$(status_of branch-name)"
+
+setup; export HEAD_REF='wrong-shape' AUTHOR_LOGIN='janedoe' INPUT_SKIP_ACTORS='   ,  ,'
+run_check branch-name >/dev/null
+assert_eq 'a whitespace-only list exempts nobody either' fail "$(status_of branch-name)"
+
+# The gate comes first: an exempt author on an event the check does not run is still the gate's skip,
+# and neither skip can mask the other.
+setup; export HEAD_REF='wrong-shape' AUTHOR_LOGIN='dependabot[bot]' INPUT_SKIP_ACTORS='dependabot[bot]'
+export GITHUB_EVENT_ACTION=synchronize
+out=$(run_check branch-name)
+assert_eq 'the event gate is decided before the exemption' skip "$(status_of branch-name)"
+assert_contains 'and the gate owns the message' 'Not applicable' "$(cat "$RESULTS_DIR/branch-name.msg")"
 
 # ===============================================================================================
 group 'report: aggregation'

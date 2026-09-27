@@ -11,6 +11,10 @@ prv_init pr-title-length
 
 prv_gate 'pull_request' || exit 0
 
+# After the gate: whether the event applies is decided before whether the actor is exempt. `&& exit 0`
+# is the inverse of prv_gate's `|| exit 0`: the helper returns 0 when the author IS exempt.
+prv_actor_exempt "$AUTHOR_LOGIN" "$INPUT_SKIP_ACTORS" && exit 0
+
 # `LC_ALL=C.UTF-8` is load bearing: without it `wc -m` counts bytes and a non-Latin title is wrongly
 # rejected as too long. `printf '%s'` avoids a trailing newline inflating the count by one.
 length=$(printf '%s' "$PR_TITLE" | LC_ALL=C.UTF-8 wc -m)

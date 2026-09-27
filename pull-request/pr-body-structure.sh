@@ -10,6 +10,10 @@ prv_init pr-body-structure
 
 prv_gate 'pull_request' || exit 0
 
+# After the gate: whether the event applies is decided before whether the actor is exempt. `&& exit 0`
+# is the inverse of prv_gate's `|| exit 0`: the helper returns 0 when the author IS exempt.
+prv_actor_exempt "$AUTHOR_LOGIN" "$INPUT_SKIP_ACTORS" && exit 0
+
 matched=$(prv_matched_type_labels)
 count=$(printf '%s' "$matched" | grep -c . || true)
 

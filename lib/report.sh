@@ -87,7 +87,9 @@ total=${#CHECKS[@]}
 if [ "$failures" -eq 0 ]; then
   summary+=$'\n\n'"All $(( total - skipped - errors )) checks passed"
   if [ "$skipped" -gt 0 ]; then
-    summary+=" ($skipped skipped, not applicable to this event)"
+    # Not one meaning any more: a check skips when the event does not apply, when it cannot reach a
+    # verdict, and when the author is on the consumer's `skip-actors` list. Each row says which.
+    summary+=" ($skipped skipped, not run for this pull request)"
   else
     summary+="."
   fi

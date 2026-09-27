@@ -75,6 +75,31 @@ prv_gate() {
   return 0
 }
 
+# prv_actor_exempt <login> <csv> — return 0 when the pull request author is on the consumer's
+# exemption list, 1 otherwise. Callers write `prv_actor_exempt ... && exit 0`, the inverse of
+# prv_gate: here 0 means "exempt, stop", not "proceed". An exempt author records `skip` naming the
+# login; a non-exempt one records nothing, so the check runs and records its own verdict exactly as
+# prv_gate does for an inapplicable event. Never `pass`: a green tick would claim a validation that
+# never happened.
+prv_actor_exempt() {
+  local entry target
+  target=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  # Literal whole-string comparison, never a regex: an unanchored pattern would exempt
+  # `robotics-team` for an entry of `bot`, and a list a reader cannot audit is a list nobody audits.
+  # Both sides downcased, so the match is case-insensitive. An empty list exempts nobody: a blank
+  # entry must never match an author whose login is somehow empty too.
+  while IFS= read -r entry; do
+    entry=$(printf '%s' "$entry" | tr '[:upper:]' '[:lower:]')
+    if [ -n "$entry" ] && [ "$entry" = "$target" ]; then
+      # The login is untrusted context, so it is escaped before it reaches the log line.
+      prv_note "Exempt actor: '$(prv_escape "$1")' is listed in 'skip-actors', so this check did not run."
+      prv_record skip "Exempt actor: the pull request author '$1' is listed in 'skip-actors', so this check was not run."
+      return 0
+    fi
+  done <<< "$(prv_csv_lines "$2")"
+  return 1
+}
+
 # prv_csv_lines <value> — a comma-separated input, one trimmed element per line.
 # Empty input must emit nothing rather than one blank line, or `wc -l` and `jq -s` both count 1.
 prv_csv_lines() {

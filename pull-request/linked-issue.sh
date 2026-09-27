@@ -11,6 +11,10 @@ prv_init linked-issue
 
 prv_gate 'pull_request' || exit 0
 
+# After the gate: whether the event applies is decided before whether the actor is exempt. `&& exit 0`
+# is the inverse of prv_gate's `|| exit 0`: the helper returns 0 when the author IS exempt.
+prv_actor_exempt "$AUTHOR_LOGIN" "$INPUT_SKIP_ACTORS" && exit 0
+
 sources=$(prv_csv_lines "$INPUT_LINKED_ISSUE_SOURCES" | tr '[:upper:]' '[:lower:]')
 source_github=no
 source_linear=no
