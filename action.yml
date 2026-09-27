@@ -35,6 +35,11 @@ runs:
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         # The PR AUTHOR, not the head ref owner: for a fork PR they are different people.
         AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+        # prv_gate filters on the event action as well as the event name. This is a context value
+        # passed like every other one here, not a runner default: GitHub exposes GITHUB_EVENT_NAME
+        # and GITHUB_EVENT_PATH, not GITHUB_EVENT_ACTION, and an unset variable under `set -u` kills
+        # the check before it can record a verdict.
+        GITHUB_EVENT_ACTION: ${{ github.event.action }}
       run: bash ${{ github.action_path }}/branch-name.sh
 
     - name: Report

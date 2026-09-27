@@ -30,6 +30,10 @@ runs:
         GH_REPO: ${{ github.repository }}
         ISSUE_NUMBER: ${{ github.event.issue.number }}
         INPUT_AUTO_LABEL_NAME: ${{ inputs.auto-label-name }}
+        # prv_gate filters on the event action as well as the event name, and this is a context
+        # value rather than a runner default: GitHub exposes GITHUB_EVENT_NAME and GITHUB_EVENT_PATH,
+        # not GITHUB_EVENT_ACTION. Unset under `set -u` it kills the check before it records anything.
+        GITHUB_EVENT_ACTION: ${{ github.event.action }}
       run: bash ${{ github.action_path }}/auto-label.sh
 
     - name: Report
