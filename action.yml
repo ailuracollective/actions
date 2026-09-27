@@ -1,5 +1,8 @@
-name: 'Branch validation'
-description: 'Require a pull request''s head branch to read <author>/<type>/<description> and be owned by its author.'
+# The Marketplace builds one listing per repository from this file, so this `name` titles all four
+# actions. It may not collide with a Marketplace category nor match the publishing owner.
+name: 'Contribution policy'
+# Under 125 characters, because the Marketplace rejects a longer one at publish time.
+description: 'Four pull request gates: branch naming, a linked approved issue, one type label, a conventional title, and a templated body.'
 author: 'ailuracollective'
 
 # The flagship of this hub, and the only position that permits the one-segment path
@@ -48,6 +51,7 @@ runs:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
+        # Titles the one action that ran; the manifest `name` titles the repository's listing.
         PRV_TITLE: 'Branch validation'
         PRV_CHECKS: 'branch-name'
         PRV_LABELS: 'Branch name'

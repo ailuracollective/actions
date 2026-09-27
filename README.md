@@ -18,6 +18,21 @@ triage needs `issues: write` — the only one, and the only one that cannot work
 a fork, because a fork event carries no secrets. A consumer that only wants branch naming should not
 have to grant the others.
 
+### One Marketplace listing
+
+GitHub allows one listing per repository and builds it from the root `action.yml`. Actions in
+sub-directories are fully supported and consumed by path, but never get a listing:
+
+> Each repository must contain a single action metadata file (`action.yml` or `action.yaml`) at the
+> root. Repositories may include other actions metadata files in sub-folders, but they will not be
+> automatically listed in the marketplace.
+
+So the root `name` titles the listing for all four actions — it is `Contribution policy`, not the name
+of the one action that happens to sit at the root. The listing body is this README, and a `name`
+change is expected to mint a new listing and retire the old slug, so it is worth choosing before
+consumers arrive. Runtime titles are unaffected: a run still says *Branch validation*, because
+`PRV_TITLE` names the action that ran.
+
 ## Versioning
 
 This repository holds several actions, and a git tag versions the **whole repository**, so every
