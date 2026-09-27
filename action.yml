@@ -1,0 +1,28 @@
+name: 'Contribution policy'
+# The `name` of the root manifest titles the one Marketplace listing this repository can have; the
+# four directory manifests are listed nowhere, so this string is the whole listing's headline.
+# Under 125 characters, because the Marketplace rejects a longer one at publish time.
+description: 'Index of this hub''s four contribution-policy actions. This listing runs no check.'
+author: 'ailuracollective'
+
+# No `inputs:` block. An index that accepted inputs would be an action pretending to be an index.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: The root manifest is an index
+      shell: bash
+      # Fails on purpose. Adopting `ailuracollective/actions@v1` is a mistake, and a step that passed
+      # green would be a silent claim that a pull request was validated when nothing ran: a hard
+      # failure naming the four real paths is the honest outcome. Do not add `continue-on-error`.
+      run: |
+        printf '::error::The root manifest of ailuracollective/actions is an index, not a check: it indexes the four actions in this hub and enforces nothing. Adopt one of the four by its own path -- ailuracollective/actions/branch-validation@v1, ailuracollective/actions/pull-request@v1, ailuracollective/actions/triage@v1, ailuracollective/actions/pull-request-template@v1 -- and the README says what each one does. This failure is the intended result of adopting the index by mistake, not a defect.\n'
+        exit 1
+
+# Marketplace listing metadata. `color` accepts only nine named values — white, black,
+# yellow, blue, green, orange, red, purple, gray-dark — not a hex code. `icon` must be a
+# Feather v4.28.0 name, excluding coffee, columns, divide, divide-circle, divide-square,
+# frown, hexagon, key, meh, mouse-pointer, smile, tool and x-octagon.
+branding:
+  icon: 'book-open'
+  color: 'yellow'

@@ -12,24 +12,37 @@ pull request's metadata and its linked issues, and they never check out or run t
 | **Issue triage** | Applies a triage label to newly opened issues | `ailuracollective/actions/triage@v1` |
 | **Pull request template resolver** | Resolves a type's PR template and reports it through outputs, for use in a job of your own | `ailuracollective/actions/pull-request-template@v1` |
 
+The root `action.yml` is not in that table because it is not an action. It is the index the four are
+listed under, and adopting it by mistake fails on purpose: a consumer who writes
+`ailuracollective/actions@v1` gets a failed run naming all four paths above.
+
 They are separate because they answer different questions and need different permissions. Branch
 naming needs no token at all. The PR policy needs `pull-requests: read` and `contents: read`. Issue
 triage needs `issues: write` — the only one, and the only one that cannot work on a pull request from
 a fork, because a fork event carries no secrets. A consumer that only wants branch naming should not
 have to grant the others.
 
-### No Marketplace listing
+### One Marketplace listing
 
 GitHub builds at most one listing per repository, and only from an `action.yml` at the repository
-root. This repository has no root manifest: every action lives in its own directory, so there is no
-listing to claim. The actions are adopted by path, and this README is their documentation.
+root. The root manifest here is that listing: its `name`, **Contribution policy**, is the title the
+repository appears under, and the four actions keep their own paths underneath it. The listing is an
+index, not a fifth action — it declares no inputs, runs no check, and needs no token.
+
+Adopting it by mistake fails loudly, on purpose. `ailuracollective/actions@v1` resolves to the
+index, the single step errors, and the job fails naming `branch-validation`, `pull-request`,
+`triage` and `pull-request-template`. A green run there would have claimed a validation that never
+happened.
 
 ## Versioning
 
 This repository holds several actions, and a git tag versions the **whole repository**, so every
-action in it moves version together. There is no per-action version. The move of branch validation
-out of the repository root is such a breaking change — a consumer's `ailuracollective/actions@v1`
-stops resolving — so it is released as `v2`, never silently under `v1`.
+action in it moves version together. There is no per-action version.
+
+`v1` is the moving major line. It carries the root index and all four directory actions, and every
+one of them resolves at `@v1` today. A change that breaks a consumer — the move of branch validation
+out of the repository root was one — moves the whole repository to a new major rather than shipping
+under `v1`.
 
 Two refs, and they do different jobs. This repository publishes the moving major line, not
 patch-level tags:
@@ -219,6 +232,7 @@ script is added, and a test suite that documents a stale count of itself is a sm
 everybody stops reading. `bash tests/run-checks.sh` prints the real one.
 
 ```
+action.yml                      the index: the one Marketplace listing for the four actions below
 branch-validation/action.yml        branch validation, one check
 branch-validation/branch-name.sh    its entry point, beside its own manifest
 lib/common.sh                  shared module: result recording, event gating, escaping, parsers
@@ -237,8 +251,9 @@ tests/stubs/                   offline stand-ins
 ```
 
 An action's exclusive scripts live in the action's own directory, beside its `action.yml`. The
-repository root holds only what is shared — `lib/` — plus one directory per action. There is no
-`scripts/` container, and no action is more principal than another.
+repository root holds only the index manifest, what is shared — `lib/` — plus one directory per
+action. There is no `scripts/` container, the root is the listing rather than an action, and none of
+the four directories is more principal than another.
 
 A check and an action can need the same rule without either importing the other's reporting contract,
 so a shared rule goes in `lib/` and both source it. What may not be duplicated is the rule, the
@@ -278,10 +293,16 @@ labels by name and cannot create one, so a fresh repository starts unable to pas
 ### Adding an action
 
 The harness **discovers** actions rather than listing them, so a new action needs no test edits: the
-suite finds every `action.yml` in any directory beside the root, parses it, and checks that
+suite finds every `action.yml` in any directory beside the root — the root manifest included — parses
+it, and checks that
 each step declares `run` and `shell: bash`, that every script a step invokes exists, that every
-reporting action's check steps declare `continue-on-error`, and that every module in `lib/` is
-actually used. A new directory that breaks any of those fails the suite.
+reporting action's check steps declare `continue-on-error`, that every module in `lib/` is
+actually used, and that the root manifest declares no inputs and invokes no script. A new directory
+that breaks any of those fails the suite.
+
+The root is reserved for the index. A new action goes in its own directory and never in the root:
+a fifth manifest there would be a second action competing with the listing, and the harness would
+reject any root manifest that grows an input or a check step.
 
 **1. `<name>/action.yml`.** A composite action, same shape as any other here. Put the directory at the
 repository root, not under an `actions/` folder: the path in `uses:` is the directory path within the

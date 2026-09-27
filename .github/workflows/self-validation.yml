@@ -49,6 +49,44 @@ jobs:
           linked-issue-sources: github
           approved-label: status:approved
 
+  root-index:
+    name: Root index refuses adoption
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # `continue-on-error`: the index is meant to fail, so the job asserts the failure instead of
+      # dying on it. No permissions are needed because the index reads nothing and calls no API.
+      - id: index
+        continue-on-error: true
+        uses: ./
+      # The step outcome is the property. The pointer is checked by replaying the index's own inline
+      # step body, because a composite step exposes no output to read the rendered `::error` from.
+      - name: The index fails and points at a real action
+        shell: bash
+        run: |
+          if [ '${{ steps.index.outcome }}' != failure ]; then
+            printf '::error::the root index was adopted and did not fail; it must refuse adoption\n'
+            exit 1
+          fi
+          sed -n '/^      run: |$/,/^$/p' action.yml | sed '1d' > "$RUNNER_TEMP/index-step.sh"
+          set +e
+          output=$(bash "$RUNNER_TEMP/index-step.sh" 2>&1)
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            printf '::error::the index step must exit non-zero; it exited 0\n'
+            exit 1
+          fi
+          case $output in
+            *branch-validation*) ;;
+            *)
+              printf '::error::the index error must name branch-validation; got: %s\n' "$output"
+              exit 1
+              ;;
+          esac
+
   triage:
     name: Issue triage
     if: github.event_name == 'issues'

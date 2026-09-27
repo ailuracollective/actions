@@ -669,23 +669,28 @@ group 'manifest'
 # ===============================================================================================
 # Actions are DISCOVERED, never listed. The convention is one directory per action at the repository
 # root, so a consumer writes `ailuracollective/actions/<name>@v1` rather than a doubled
-# `actions/actions/<name>@v1`, and adding an action needs no edit here.
+# `actions/actions/<name>@v1`, and adding an action needs no edit here. The root manifest is
+# discovered too: it is the index the four actions are listed under, and it must stay one.
 #
 # The manifest is also the one file `bash -n` cannot check, and a stray `: ` inside an unquoted
 # description is a YAML parse error that only surfaces on a runner. PyYAML caught exactly that here.
+#
+# Not sorted: the root manifest leads, on its own, because it is the listing the whole hub is
+# reached through and the rest are the actions it indexes. `sort` would mix the two together.
 mapfile -t manifests < <(
-  find "$ROOT" -mindepth 2 -maxdepth 2 -name 'action.yml' | sed "s|^$ROOT/||" | sort
+  { [ -f "$ROOT/action.yml" ] && printf 'action.yml\n'; find "$ROOT" -mindepth 2 -maxdepth 2 -name 'action.yml' | sed "s|^$ROOT/||" | sort; }
 )
 # An `if`, not `[ … ] && ok … || bad …`: a non-zero `ok` would also run the `||` branch.
-# A root manifest would make one action the repository's Marketplace entry point, which no action here is.
+# GitHub builds at most one listing per repository, and only from the root manifest, so its absence
+# is a missing listing rather than a virtue.
 if [ -f "$ROOT/action.yml" ]; then
-  bad 'no action.yml is left at the repository root' 'absent' 'action.yml exists at the root'
+  ok 'a root action.yml exists: the repository has one Marketplace listing'
 else
-  ok 'no action.yml is left at the repository root'
+  bad 'a root action.yml exists: the repository has one Marketplace listing' 'action.yml at the root' 'absent'
 fi
 # Derived, not pinned. A hardcoded count here would fail the moment another action lands, which is
 # the brittleness this layout is meant to remove.
-dir_actions=$(printf '%s\n' "${manifests[@]}" | grep -c . || true)
+dir_actions=$(printf '%s\n' "${manifests[@]}" | grep -v '^action\.yml$' | grep -c . || true)
 if [ "$dir_actions" -ge 1 ]; then
   ok "directory actions discovered: $dir_actions"
 else
@@ -715,6 +720,30 @@ print(len(d.get('inputs', {})), len(steps))
       bad "parses: $manifest" "valid composite action" "$(printf '%s' "$detail" | tail -2)"
     fi
   done
+
+  # The root manifest is the listing, not a gate. An index that grew inputs, or a step that invoked
+  # a script, or a second step, would be an action wearing a costume, and the listing would start
+  # advertising a check the four actions are the ones to perform.
+  if index_problem=$(PRV_ROOT="$ROOT" python3 -c "
+import os, yaml
+path = os.path.join(os.environ['PRV_ROOT'], 'action.yml')
+d = yaml.safe_load(open(path))
+problems = []
+if d.get('inputs'):
+    problems.append('declares %d input(s)' % len(d['inputs']))
+steps = d['runs'].get('steps', [])
+if len(steps) != 1:
+    problems.append('declares %d steps' % len(steps))
+for s in steps:
+    if 'action_path' in (s.get('run') or ''):
+        problems.append('a step invokes a script through github.action_path')
+print('; '.join(problems))
+" 2>&1); then
+    :
+  else
+    index_problem="the root manifest could not be parsed: $index_problem"
+  fi
+  assert_eq 'the root manifest is an index: it declares no inputs and runs no check' '' "$index_problem"
 
   # Every step that runs a check must be able to survive its own failure, or aggregation is dead:
   # a non-zero step aborts every step after it, including the report. It is asserted on every
@@ -766,8 +795,13 @@ import os, yaml
 root = os.environ['PRV_ROOT']
 total = 0
 for rel in os.environ['PRV_MANIFESTS'].splitlines():
-    if rel:
-        total += len(yaml.safe_load(open(os.path.join(root, rel)))['runs'].get('steps', []))
+    if not rel:
+        continue
+    # Only the steps that invoke a script: the index runs inline, and a step that runs nothing
+    # external has no path for the existence check to resolve.
+    for s in yaml.safe_load(open(os.path.join(root, rel)))['runs'].get('steps', []):
+        if 'action_path' in (s.get('run') or ''):
+            total += 1
 print(total)
 ")
   resolved_count=$(printf '%s' "$paths" | grep -c . || true)
