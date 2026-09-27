@@ -1,0 +1,43 @@
+name: Bootstrap labels
+
+# The policy reads labels by name and cannot create one, so the set is configuration. Manual trigger,
+# `--force` throughout, so a second run is a no-op.
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  labels:
+    name: Create the policy labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Create the labels the policy reads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          create() { gh label create "$1" --color "$2" --description "$3" --force; }
+
+          # Must match what self-validation.yml passes to both the branch check and the policy.
+          create feat      0e8a16 'A new capability.'
+          create fix       d73a4a 'A correction of existing behaviour.'
+          create docs      0075ca 'Documentation only.'
+          create chore     c2e0c6 'Housekeeping with no behaviour change.'
+          create ci        5319e7 'Workflow and runner configuration.'
+          create test      fbca04 'Tests and the offline suite.'
+          create refactor  cfd3d7 'Behaviour-preserving restructuring.'
+
+          # Applied by a maintainer, never derived: approval is a human judgement, and the
+          # linked-issue gate is only as strong as that judgement.
+          create status:approved     006b2d 'A maintainer has agreed this issue is worth doing. Required on any linked issue.'
+          create status:needs-review d93f0b 'Opened and not yet triaged. Applied automatically by the triage action.'
+
+      - name: Show the resulting set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh label list --limit 60

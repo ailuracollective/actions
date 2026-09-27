@@ -1,0 +1,50 @@
+name: Feature request
+description: A capability an action should have, or a check it should enforce.
+title: 'feat: '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A maintainer applies `status:approved` during triage. A pull request that closes this issue
+        cannot pass the linked-issue check until that label is on it.
+  - type: input
+    id: action
+    attributes:
+      label: Which action
+      description: 'For example `actions`, `actions/pull-request`, `actions/triage`.'
+      placeholder: actions/pull-request
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem, before the solution
+      description: What you cannot do today, and who it affects. A solution is welcome in the next
+        field, but the problem is the part that decides whether this gets built.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like instead
+      description: The input, output or verdict you would want, and roughly what it should do.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Effect on a consumer who upgrades
+      description: Does this need a new input, a new tag, or nothing at all? An answer of "a new
+        major version" is a legitimate and useful one.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you file this
+      options:
+        - label: I searched the open issues for this.
+          required: true
+        - label: I checked the action's README for an existing input that covers this.
+          required: false

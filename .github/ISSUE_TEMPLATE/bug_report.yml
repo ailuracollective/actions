@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in an action behaves differently from what its README promises.
+title: 'fix: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A maintainer applies `status:approved` during triage. A pull request that closes this issue
+        cannot pass the linked-issue check until that label is on it, so please describe the defect
+        precisely enough to be approved.
+  - type: input
+    id: action
+    attributes:
+      label: Which action
+      description: 'For example `actions`, `actions/pull-request`, `actions/triage`.'
+      placeholder: actions/pull-request
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Which ref
+      description: The tag or commit SHA you used.
+      placeholder: v1
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What the README says should happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: The failure message, the job summary table, or the wrong verdict. Paste it as it
+        appeared rather than as you read it.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce it
+      description: The workflow snippet, the inputs, and the event that triggers it.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you file this
+      options:
+        - label: I searched the open issues for this.
+          required: true
+        - label: I read the action's own README section for this behaviour.
+          required: false

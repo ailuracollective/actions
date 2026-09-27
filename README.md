@@ -217,9 +217,13 @@ it shares code with the PR policy instead of duplicating it.
 bash tests/run-checks.sh
 ```
 
-157 assertions run every check against stubbed `gh`, `curl` and `jq`, with no network, no token and
+Every check runs against the stubbed `gh`, `curl` and `jq` in `tests/stubs/`, with no network, no token and
 no runner. The stubs live in `tests/stubs/` and are driven entirely by env vars. The suite discovers
 every action in the repository, so it grows as the hub does.
+
+The assertion count is deliberately not written down. A number in this sentence is wrong the moment a
+script is added, and a test suite that documents a stale count of itself is a small lie that
+everybody stops reading. `bash tests/run-checks.sh` prints the real one.
 
 ```
 action.yml                     the flagship: branch validation
@@ -235,6 +239,8 @@ pull-request-template/action.yml         the standalone resolver
 pull-request-template/resolve.sh         its entry point
 tests/run-checks.sh            the harness; discovers every action
 tests/stubs/                   offline stand-ins
+.shellcheckrc                  source resolution, so the shared modules are analysed
+.yamllint.yml                  the two YAML rules this repository's content cannot satisfy
 ```
 
 An action's exclusive scripts live in the action's own directory, beside its `action.yml`. The
@@ -245,6 +251,37 @@ directory action's check occupies inside its directory. There is no `scripts/` c
 A check and an action can need the same rule without either importing the other's reporting contract,
 so a shared rule goes in `lib/` and both source it. What may not be duplicated is the rule, the
 path-traversal guard, or the ref chain.
+
+### The four layers of testing
+
+The suite above is the first layer and the cheapest. It is not sufficient on its own, because a
+shell suite cannot see a composite action, and the failure mode of trusting only it is a rule that is
+correct in isolation and never runs.
+
+| Layer | What it is | What it can catch |
+| --- | --- | --- |
+| Offline suite | `bash tests/run-checks.sh`, no network | The rules themselves: parsers, the path guard, the ref chain, verdict recording |
+| Static analysis | `.github/workflows/checks.yml` runs shellcheck, yamllint and actionlint | Quoting and expansion mistakes, manifest shape, workflow expression and context errors |
+| Self-validation | `.github/workflows/self-validation.yml` runs these actions, via `uses: ./`, against real pull requests | Everything the first two cannot: a composite action that fails to resolve, a missing `permissions` grant, an event that never reaches the check, a stub that disagrees with the real API |
+| Release smoke | Not automated | Whether the published tag still works, which `uses: ./` by definition never tests |
+
+The split between layer 1 and layer 3 is the one that matters. `uses: ./` means the pull request is
+validated by the code the pull request contains, so a change that breaks the policy fails its own
+run — that is the signal, and it is why layer 3 uses `./` and not `@v1`. The cost is that the
+published tag is untested by it, which is what the fourth layer is for. Run the smoke test after a
+release: open a pull request, let it fail on purpose, and read the message as the author who will
+receive it. Nothing in the suite checks whether a failure message is useful to a human.
+
+Two deliberate asymmetries:
+
+- **Fork pull requests are skipped by layer 3.** `uses: ./` needs the head on the runner, and the
+  policy holds a token while it runs — the combination the action's own README forbids for forks. The
+  `if` is at workflow level so all three jobs agree.
+- **The three linters are pinned by version and digest**, not taken from the runner image. A required
+  status that changes verdict when GitHub ships a new image is a status nobody trusts.
+
+To set the labels layer 3 depends on, run the **Bootstrap labels** workflow once. The policy reads
+labels by name and cannot create one, so a fresh repository starts unable to pass `linked-issue`.
 
 ### Adding an action
 
