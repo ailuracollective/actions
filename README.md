@@ -7,7 +7,7 @@ pull request's metadata and its linked issues, and they never check out or run t
 
 | Action | What it does | Adopt with |
 | --- | --- | --- |
-| **Branch validation** | Requires the head branch to read `<author>/<type>/<description>` and to be owned by the PR author | `ailuracollective/actions@v1` |
+| **Branch validation** | Requires the head branch to read `<author>/<type>/<description>` and to be owned by the PR author | `ailuracollective/actions/branch-validation@v1` |
 | **Pull request policy** | Linked issue (GitHub `#N` or Linear `TEAMKEY-N`), type label, title shape and length, description structure | `ailuracollective/actions/pull-request@v1` |
 | **Issue triage** | Applies a triage label to newly opened issues | `ailuracollective/actions/triage@v1` |
 | **Pull request template resolver** | Resolves a type's PR template and reports it through outputs, for use in a job of your own | `ailuracollective/actions/pull-request-template@v1` |
@@ -18,25 +18,18 @@ triage needs `issues: write` — the only one, and the only one that cannot work
 a fork, because a fork event carries no secrets. A consumer that only wants branch naming should not
 have to grant the others.
 
-### One Marketplace listing
+### No Marketplace listing
 
-GitHub allows one listing per repository and builds it from the root `action.yml`. Actions in
-sub-directories are fully supported and consumed by path, but never get a listing:
-
-> Each repository must contain a single action metadata file (`action.yml` or `action.yaml`) at the
-> root. Repositories may include other actions metadata files in sub-folders, but they will not be
-> automatically listed in the marketplace.
-
-So the root `name` titles the listing for all four actions — it is `Contribution policy`, not the name
-of the one action that happens to sit at the root. The listing body is this README, and a `name`
-change is expected to mint a new listing and retire the old slug, so it is worth choosing before
-consumers arrive. Runtime titles are unaffected: a run still says *Branch validation*, because
-`PRV_TITLE` names the action that ran.
+GitHub builds at most one listing per repository, and only from an `action.yml` at the repository
+root. This repository has no root manifest: every action lives in its own directory, so there is no
+listing to claim. The actions are adopted by path, and this README is their documentation.
 
 ## Versioning
 
 This repository holds several actions, and a git tag versions the **whole repository**, so every
-action in it moves version together. There is no per-action version.
+action in it moves version together. There is no per-action version. The move of branch validation
+out of the repository root is such a breaking change — a consumer's `ailuracollective/actions@v1`
+stops resolving — so it is released as `v2`, never silently under `v1`.
 
 Two refs, and they do different jobs:
 
@@ -70,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - uses: ailuracollective/actions@v1
+      - uses: ailuracollective/actions/branch-validation@v1
         with:
           branch-types: feat,fix,chore
 ```
@@ -226,8 +219,8 @@ script is added, and a test suite that documents a stale count of itself is a sm
 everybody stops reading. `bash tests/run-checks.sh` prints the real one.
 
 ```
-action.yml                     the flagship: branch validation
-branch-name.sh                 its entry point, beside its own manifest
+branch-validation/action.yml        branch validation, one check
+branch-validation/branch-name.sh    its entry point, beside its own manifest
 lib/common.sh                  shared module: result recording, event gating, escaping, parsers
 lib/template.sh                shared module: the template resolution rule
 lib/report.sh                  shared module: the job-summary table and the aggregated exit
@@ -244,9 +237,8 @@ tests/stubs/                   offline stand-ins
 ```
 
 An action's exclusive scripts live in the action's own directory, beside its `action.yml`. The
-repository root holds only what is shared — `lib/` — plus each action's manifest and its own scripts.
-The flagship is the root, so its check sits at the root next to its `action.yml`, the same position a
-directory action's check occupies inside its directory. There is no `scripts/` container.
+repository root holds only what is shared — `lib/` — plus one directory per action. There is no
+`scripts/` container, and no action is more principal than another.
 
 A check and an action can need the same rule without either importing the other's reporting contract,
 so a shared rule goes in `lib/` and both source it. What may not be duplicated is the rule, the
@@ -262,21 +254,21 @@ correct in isolation and never runs.
 | --- | --- | --- |
 | Offline suite | `bash tests/run-checks.sh`, no network | The rules themselves: parsers, the path guard, the ref chain, verdict recording |
 | Static analysis | `.github/workflows/checks.yml` runs shellcheck, yamllint and actionlint | Quoting and expansion mistakes, manifest shape, workflow expression and context errors |
-| Self-validation | `.github/workflows/self-validation.yml` runs these actions, via `uses: ./`, against real pull requests | Everything the first two cannot: a composite action that fails to resolve, a missing `permissions` grant, an event that never reaches the check, a stub that disagrees with the real API |
-| Release smoke | Not automated | Whether the published tag still works, which `uses: ./` by definition never tests |
+| Self-validation | `.github/workflows/self-validation.yml` runs these actions, by directory path, against real pull requests | Everything the first two cannot: a composite action that fails to resolve, a missing `permissions` grant, an event that never reaches the check, a stub that disagrees with the real API |
+| Release smoke | Not automated | Whether the published tag still works, which a directory path by definition never tests |
 
-The split between layer 1 and layer 3 is the one that matters. `uses: ./` means the pull request is
-validated by the code the pull request contains, so a change that breaks the policy fails its own
-run — that is the signal, and it is why layer 3 uses `./` and not `@v1`. The cost is that the
-published tag is untested by it, which is what the fourth layer is for. Run the smoke test after a
-release: open a pull request, let it fail on purpose, and read the message as the author who will
-receive it. Nothing in the suite checks whether a failure message is useful to a human.
+The split between layer 1 and layer 3 is the one that matters. A directory path means the pull
+request is validated by the code the pull request contains, so a change that breaks the policy fails
+its own run — that is the signal, and it is why layer 3 uses `./<name>` and not `@v1`. The cost is
+that the published tag is untested by it, which is what the fourth layer is for. Run the smoke test
+after a release: open a pull request, let it fail on purpose, and read the message as the author who
+will receive it. Nothing in the suite checks whether a failure message is useful to a human.
 
 Two deliberate asymmetries:
 
-- **Fork pull requests are skipped by layer 3.** `uses: ./` needs the head on the runner, and the
-  policy holds a token while it runs — the combination the action's own README forbids for forks. The
-  `if` is at workflow level so all three jobs agree.
+- **Fork pull requests are skipped by layer 3.** A directory path needs the head on the runner, and
+  the policy holds a token while it runs — the combination the action's own README forbids for forks.
+  The `if` is at workflow level so all three jobs agree.
 - **The three linters are pinned by version and digest**, not taken from the runner image. A required
   status that changes verdict when GitHub ships a new image is a status nobody trusts.
 
@@ -286,7 +278,7 @@ labels by name and cannot create one, so a fresh repository starts unable to pas
 ### Adding an action
 
 The harness **discovers** actions rather than listing them, so a new action needs no test edits: the
-suite finds every `action.yml` at the root and in any directory beside it, parses it, and checks that
+suite finds every `action.yml` in any directory beside the root, parses it, and checks that
 each step declares `run` and `shell: bash`, that every script a step invokes exists, that every
 reporting action's check steps declare `continue-on-error`, and that every module in `lib/` is
 actually used. A new directory that breaks any of those fails the suite.
@@ -301,7 +293,7 @@ repository, so `actions/<name>/` would make consumers write the doubled
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-# shellcheck source=lib/common.sh
+# shellcheck source=../lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 prv_init my-check

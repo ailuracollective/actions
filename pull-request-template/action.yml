@@ -3,8 +3,8 @@ description: 'Resolve the pull request template for a type at a git ref, falling
 author: 'ailuracollective'
 
 # A thin wrapper. The resolution rule and both of its failure modes live in lib/template.sh,
-# which the root action's pr-body-structure check also sources, so the two surfaces cannot drift.
-# `${{ github.action_path }}` is this subdirectory, so `../..` is the repository root — the whole repo
+# which the pull request policy's pr-body-structure check also sources, so the two surfaces cannot drift.
+# `${{ github.action_path }}` is this subdirectory, so `../` is the repository root — the whole repo
 # is downloaded at a tag, which is what makes the relative path resolve for a consumer.
 #
 # The rule is not inlined here on purpose: a second copy of it would be a second thing to keep

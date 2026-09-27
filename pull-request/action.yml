@@ -4,7 +4,7 @@ author: 'ailuracollective'
 
 # Five checks, one status. The rules are independent, so branch protection can require each — except
 # that a composite action cannot, which is why the run reports all five at once and the job summary
-# carries the table. Branch naming is a separate action, at the repository root.
+# carries the table. Branch naming is a separate action.
 
 inputs:
   enable-linked-issue:

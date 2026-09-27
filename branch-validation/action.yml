@@ -1,14 +1,11 @@
-# The Marketplace builds one listing per repository from this file, so this `name` titles all four
-# actions. It may not collide with a Marketplace category nor match the publishing owner.
-name: 'Contribution policy'
+name: 'Branch validation'
 # Under 125 characters, because the Marketplace rejects a longer one at publish time.
-description: 'Four pull request gates: branch naming, a linked approved issue, one type label, a conventional title, and a templated body.'
+description: 'Require a pull request''s head branch to read <author>/<type>/<description> and to be owned by its author.'
 author: 'ailuracollective'
 
-# The flagship of this hub, and the only position that permits the one-segment path
-# `uses: ailuracollective/actions@v1`. One check, deliberately: the other contribution-policy checks
-# are separate actions, because a consumer that only wants branch naming should not have to opt out
-# of five others, and should not need a token at all.
+# One check, deliberately: the other contribution-policy checks are separate actions, because a
+# consumer that only wants branch naming should not have to opt out of five others, and should not
+# need a token at all.
 
 inputs:
   branch-types:
@@ -51,12 +48,12 @@ runs:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
-        # Titles the one action that ran; the manifest `name` titles the repository's listing.
+        # Titles the one action that ran.
         PRV_TITLE: 'Branch validation'
         PRV_CHECKS: 'branch-name'
         PRV_LABELS: 'Branch name'
         PRV_NOTE: 'This check runs on `opened` only. GitHub cannot rename a branch an open pull request points at, so `head.ref` is fixed for the life of the pull request; re-validating it on every event would spend runner minutes re-deriving a fact that cannot have changed.'
-      run: bash ${{ github.action_path }}/lib/report.sh
+      run: bash ${{ github.action_path }}/../lib/report.sh
 
 # Marketplace listing metadata. `color` accepts only nine named values — white, black,
 # yellow, blue, green, orange, red, purple, gray-dark — not a hex code. `icon` must be a

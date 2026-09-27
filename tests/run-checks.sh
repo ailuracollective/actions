@@ -532,8 +532,8 @@ assert_eq 'pr-title-length failed' fail "$(status_of pr-title-length)"
 assert_eq 'pr-title-conventional failed' fail "$(status_of pr-title-conventional)"
 assert_eq 'auto-label skipped on a pull_request event' skip "$(status_of auto-label)"
 
-# The report is per action, so the PR policy sees only its own five checks and the root action only
-# its one. That separation is the point of the split, so it is asserted rather than assumed.
+# The report is per action, so the PR policy sees only its own five checks and the branch validation
+# action only its one. That separation is the point of the split, so it is asserted rather than assumed.
 report_for "$PRV_CHECK_LIST" "$PRV_LABEL_LIST" 'Pull request policy' >/dev/null
 code=$?
 assert_eq 'the PR policy report fails the job' 1 "$code"
@@ -653,7 +653,7 @@ assert_eq 'fail-on-missing exits non-zero' 1 "$?"
 assert_contains 'and says so as an error' 'error::' "$out"
 
 # A type is a URL path segment, so `../` must be refused before it reaches a URL. This is the check
-# the root action relies on, and prv_template_resolve is what both surfaces now share.
+# the PR policy relies on, and prv_template_resolve is what both surfaces now share.
 setup; stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 out=$(run_template '../../../etc/passwd')
 assert_eq 'a traversing type exits non-zero' 1 "$?"
@@ -667,22 +667,25 @@ assert_eq 'the type is case-folded' '.github/PULL_REQUEST_TEMPLATE/feat.md' "$(o
 # ===============================================================================================
 group 'manifest'
 # ===============================================================================================
-# Actions are DISCOVERED, never listed. The convention is the root `action.yml` plus one directory
-# per further action at the repository root, so a consumer writes `ailuracollective/actions/<name>@v1`
-# rather than a doubled `actions/actions/<name>@v1`, and adding an action needs no edit here.
+# Actions are DISCOVERED, never listed. The convention is one directory per action at the repository
+# root, so a consumer writes `ailuracollective/actions/<name>@v1` rather than a doubled
+# `actions/actions/<name>@v1`, and adding an action needs no edit here.
 #
 # The manifest is also the one file `bash -n` cannot check, and a stray `: ` inside an unquoted
 # description is a YAML parse error that only surfaces on a runner. PyYAML caught exactly that here.
 mapfile -t manifests < <(
-  { [ -f "$ROOT/action.yml" ] && printf '%s\n' "$ROOT/action.yml"; ls -1 "$ROOT"/*/action.yml 2>/dev/null; } \
-    | sed "s|^$ROOT/||"
+  find "$ROOT" -mindepth 2 -maxdepth 2 -name 'action.yml' | sed "s|^$ROOT/||" | sort
 )
-# Not sorted: the flagship is listed first on purpose, because it is the one the convention names.
-assert_eq 'the flagship action is discovered at the root' 'action.yml' "${manifests[0]:-none}"
-# Derived, not pinned. A hardcoded count here would fail the moment a third action lands, which is
-# the brittleness this layout is meant to remove.
-dir_actions=$(printf '%s\n' "${manifests[@]:1}" | grep -c . || true)
 # An `if`, not `[ … ] && ok … || bad …`: a non-zero `ok` would also run the `||` branch.
+# A root manifest would make one action the repository's Marketplace entry point, which no action here is.
+if [ -f "$ROOT/action.yml" ]; then
+  bad 'no action.yml is left at the repository root' 'absent' 'action.yml exists at the root'
+else
+  ok 'no action.yml is left at the repository root'
+fi
+# Derived, not pinned. A hardcoded count here would fail the moment another action lands, which is
+# the brittleness this layout is meant to remove.
+dir_actions=$(printf '%s\n' "${manifests[@]}" | grep -c . || true)
 if [ "$dir_actions" -ge 1 ]; then
   ok "directory actions discovered: $dir_actions"
 else
@@ -714,8 +717,8 @@ print(len(d.get('inputs', {})), len(steps))
   done
 
   # Every step that runs a check must be able to survive its own failure, or aggregation is dead:
-  # a non-zero step aborts every step after it, including the report. This is specific to the
-  # flagship, so it is asserted on the root manifest rather than on every discovered action.
+  # a non-zero step aborts every step after it, including the report. It is asserted on every
+  # discovered manifest.
   # Only an action that reports has something to protect: a single-step action like pull-request-template has
   # no later step to skip, so continue-on-error there would only hide its own failure.
   coe=$(PRV_ROOT="$ROOT" python3 -c "
@@ -738,7 +741,7 @@ print('|'.join(bad))
   assert_eq 'every check step in every action declares continue-on-error' '' "$coe"
 
   # Every script a step invokes must exist, or the step fails on a missing file at run time. This
-  # covers a sub-action reaching into ../../lib, the one filesystem assumption nothing else exercises.
+  # covers an action reaching into ../lib, the one filesystem assumption nothing else exercises.
   #
   # The pattern must match the two closing braces of `${{ ... }}`. An earlier version looked for a
   # single `}`, matched nothing, and passed vacuously while verifying zero paths.

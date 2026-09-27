@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Check: the head branch reads <github-username>/<type>/<description> and is owned by the PR author.
-# Invoked as branch-name.sh from the root action.yml. Records a verdict and always exits 0;
+# Invoked as branch-name.sh from this action's manifest. Records a verdict and always exits 0;
 # lib/report.sh fails the job.
 set -euo pipefail
-# shellcheck source=lib/common.sh
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 prv_init branch-name
 

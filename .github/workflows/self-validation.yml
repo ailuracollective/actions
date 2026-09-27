@@ -1,7 +1,7 @@
 name: Self validation
 
-# `./` not `@v1`: the pull request is judged by the code it contains, so a break fails its own run.
-# The published tag is untested here; that is what a release smoke test is for.
+# A directory path, not `@v1`: the pull request is judged by the code it contains, so a break fails its
+# own run. The published tag is untested here; that is what a release smoke test is for.
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Must match `type-labels` below: a branch type with no matching label could never pass.
-      - uses: ./
+      - uses: ./branch-validation
         with:
           branch-types: feat,fix,docs,chore,ci,test,refactor
 
@@ -54,7 +54,7 @@ jobs:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     # The only job here that writes, and the only grant of `issues: write`. It runs from the default
-    # branch, so `./` is this repository's own code by construction.
+    # branch, so `./triage` is this repository's own code by construction.
     permissions:
       issues: write
     steps:
