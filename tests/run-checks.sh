@@ -432,6 +432,14 @@ export PR_BODY=$'## Summary\n\n## Testing'
 run_check pr-body-structure >/dev/null
 assert_eq 'falls back to the default template for an unlisted type' pass "$(status_of pr-body-structure)"
 
+# Counts what is MISSING. It used to count what the template DECLARES.
+setup; export PR_LABELS='[{"name":"feat"}]'
+stub_repo feat 'feat.md' "$(printf '## Alpha\n\n## Beta\n\n## Gamma')"
+export PR_BODY=$'## Alpha\n\n## Gamma'
+run_check pr-body-structure >/dev/null
+assert_contains 'counts the sections missing, not the sections declared' \
+  'The body is missing 1 required section of 3' "$(cat "$RESULTS_DIR"/*)"
+
 setup; export PR_LABELS='[{"name":"feat"}]'
 stub_repo feat 'feat.md' 'no headings at all here'
 out=$(run_check pr-body-structure)

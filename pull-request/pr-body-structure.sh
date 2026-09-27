@@ -92,14 +92,17 @@ missing=0
 while IFS= read -r heading; do
   [ -n "$heading" ] || continue
   if ! printf '%s\n' "$present" | grep -qxF "$heading"; then
-    missing=1
+    missing=$((missing + 1))
     prv_error 'Missing required section' \
       "The '$type' template ($template) declares a section this pull request body does not carry: '$heading'. Fix: re-open the pull request from the matching template — the 'Create pull request' link on the Issue, or the '$INPUT_TEMPLATE_DIR/$type.md' template — so the '## $heading' section appears, then copy the template body into the description."
   fi
 done <<< "$required"
 
 if [ "$missing" -ne 0 ]; then
-  prv_record fail "The body is missing $(printf '%s\n' "$required" | wc -l | tr -d ' ') declared section(s) required by $template."
+  # Counts what is MISSING, not what the template declares.
+  noun=section
+  [ "$missing" -eq 1 ] || noun=sections
+  prv_record fail "The body is missing $missing required $noun of $(printf '%s\n' "$required" | wc -l | tr -d ' ') declared by $template."
   exit 0
 fi
 
