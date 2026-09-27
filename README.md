@@ -31,11 +31,11 @@ action in it moves version together. There is no per-action version. The move of
 out of the repository root is such a breaking change — a consumer's `ailuracollective/actions@v1`
 stops resolving — so it is released as `v2`, never silently under `v1`.
 
-Two refs, and they do different jobs:
+Two refs, and they do different jobs. This repository publishes the moving major line, not
+patch-level tags:
 
 | Ref | What it is | Use it when |
 | --- | --- | --- |
-| `v1.0.0` | An immutable release | You want reproducibility and will upgrade deliberately |
 | `v1` | A floating alias meaning **"the latest 1.\*"** | You want security and critical fixes without touching your workflow |
 | `89420d0…` | A commit SHA | You want the only truly immutable ref GitHub offers |
 
