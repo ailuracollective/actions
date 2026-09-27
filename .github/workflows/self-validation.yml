@@ -1,0 +1,64 @@
+name: Self validation
+
+# `./` not `@v1`: the pull request is judged by the code it contains, so a break fails its own run.
+# The published tag is untested here; that is what a release smoke test is for.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  issues:
+    types: [opened]
+
+# A fork pull request would put its head on the runner beside a token, which this repository's own
+# README forbids for forks. Set here so all three jobs agree rather than repeating the condition.
+permissions: {}
+
+concurrency:
+  group: self-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  branch-validation:
+    name: Branch name
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Must match `type-labels` below: a branch type with no matching label could never pass.
+      - uses: ./
+        with:
+          branch-types: feat,fix,docs,chore,ci,test,refactor
+
+  pr-policy:
+    name: Pull request policy
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # `contents: read` is what lets the body-structure check read the template off the base branch.
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # All five at their defaults. A disabled check cannot fail, and a check that never fails is
+      # not being tested.
+      - uses: ./pull-request
+        with:
+          type-labels: feat,fix,docs,chore,ci,test,refactor
+          title-min: 15
+          title-max: 72
+          linked-issue-sources: github
+          approved-label: status:approved
+
+  triage:
+    name: Issue triage
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    # The only job here that writes, and the only grant of `issues: write`. It runs from the default
+    # branch, so `./` is this repository's own code by construction.
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./triage
+        with:
+          auto-label-name: status:needs-review

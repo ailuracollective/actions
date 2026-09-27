@@ -1,0 +1,2 @@
+# Lets ShellCheck follow `source` lines to lib/, so the shared modules are analysed rather than skipped.
+source-path=SCRIPTDIR

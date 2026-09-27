@@ -1,0 +1,11 @@
+# A top-level `disable` does not override a rule `extends: default` already gives a value; nesting under `rules:` does.
+# `on` is YAML 1.1 boolean true, but GitHub requires the literal key.
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  truthy:
+    allowed-values: ['true', 'false', 'on']
+  comments:
+    min-spaces-from-content: 1

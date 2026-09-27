@@ -39,6 +39,10 @@ prv_template_fetch() {
 #   0  resolved; PRV_TEMPLATE_PATH and PRV_TEMPLATE_SOURCE are set
 #   1  neither the dedicated nor the default template could be read
 #   2  the type is not usable as a path segment
+# The two PRV_TEMPLATE_* variables are the function's output contract, read by both consumers after
+# it returns. ShellCheck sees them assigned and never read inside this file, which is exactly what a
+# sourced module's interface looks like, so the warning is silenced here rather than at six sites.
+# shellcheck disable=SC2034
 prv_template_resolve() {
   local type=$1 template_dir=$2 default_template=$3 repo=$4 ref=$5 dest=$6
 

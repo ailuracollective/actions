@@ -13,7 +13,6 @@ export PATH="$STUBS:$PATH"
 
 passed=0
 failed=0
-current=''
 
 group() { printf '\n%s\n' "$1"; }
 
@@ -118,6 +117,7 @@ BRV_CHECK_LIST='branch-name'
 BRV_LABEL_LIST='Branch name'
 
 # The advisory the branch manifest passes, so the assertion covers what a consumer actually reads.
+# shellcheck disable=SC2016  # backticks are literal text in the message, not a subshell
 BRANCH_NOTE='This check runs on `opened` only. GitHub cannot rename a branch an open pull request points at, so `head.ref` is fixed for the life of the pull request.'
 
 # A stubbed repository whose template directory holds a per-type template.
@@ -326,7 +326,7 @@ setup; export PR_TITLE='fix: x'
 run_check pr-title-length >/dev/null
 assert_eq 'rejects a title below the minimum' fail "$(status_of pr-title-length)"
 
-setup; export PR_TITLE="$(printf 'feat: %s' "$(printf 'x%.0s' $(seq 1 90))")"
+setup; PR_TITLE=$(printf 'feat: %s' "$(printf 'x%.0s' $(seq 1 90))"); export PR_TITLE
 run_check pr-title-length >/dev/null
 assert_eq 'rejects a title above the maximum' fail "$(status_of pr-title-length)"
 
@@ -448,7 +448,7 @@ assert_contains 'blames the configuration, not the pull request' 'Nothing about 
 
 setup; export PR_LABELS='[{"name":"feat"}]'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
-export GH_STUB_REPO_ROOT=$(mktemp -d)   # the template is simply absent now
+GH_STUB_REPO_ROOT=$(mktemp -d); export GH_STUB_REPO_ROOT   # the template is simply absent now
 out=$(run_check pr-body-structure)
 assert_eq 'reports a missing template as a config defect' fail "$(status_of pr-body-structure)"
 assert_contains 'names the missing template' 'type template not found' "$out"
@@ -640,14 +640,14 @@ setup; stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 out=$(run_template feat EVENT_SHA=eventsha PR_BASE_SHA=basesha INPUT_REF=explicitref)
 assert_eq 'an explicit ref wins over both' 'explicitref' "$(output_of ref)"
 
-setup; export GH_STUB_REPO_ROOT=$(mktemp -d)
+setup; GH_STUB_REPO_ROOT=$(mktemp -d); export GH_STUB_REPO_ROOT
 out=$(run_template feat)
 assert_eq 'a missing template is not found' 'false' "$(output_of found)"
 assert_eq 'and its file output is empty' '' "$(output_of file)"
 assert_eq 'and the source is honestly none' 'none' "$(output_of source)"
 assert_contains 'warns without failing' 'warning::' "$out"
 
-setup; export GH_STUB_REPO_ROOT=$(mktemp -d)
+setup; GH_STUB_REPO_ROOT=$(mktemp -d); export GH_STUB_REPO_ROOT
 out=$(run_template feat INPUT_FAIL_ON_MISSING=true)
 assert_eq 'fail-on-missing exits non-zero' 1 "$?"
 assert_contains 'and says so as an error' 'error::' "$out"
@@ -682,11 +682,15 @@ assert_eq 'the flagship action is discovered at the root' 'action.yml' "${manife
 # Derived, not pinned. A hardcoded count here would fail the moment a third action lands, which is
 # the brittleness this layout is meant to remove.
 dir_actions=$(printf '%s\n' "${manifests[@]:1}" | grep -c . || true)
-[ "$dir_actions" -ge 1 ] && ok "directory actions discovered: $dir_actions" \
-  || bad 'at least one directory action is discovered' '>= 1' "$dir_actions"
+# An `if`, not `[ … ] && ok … || bad …`: a non-zero `ok` would also run the `||` branch.
+if [ "$dir_actions" -ge 1 ]; then
+  ok "directory actions discovered: $dir_actions"
+else
+  bad 'at least one directory action is discovered' '>= 1' "$dir_actions"
+fi
 # Passed through the environment rather than interpolated: ${arr[*]@Q} produces shell-quoted
 # fragments that become single-character Python strings, not a list.
-export PRV_MANIFESTS=$(printf '%s\n' "${manifests[@]}")
+PRV_MANIFESTS=$(printf '%s\n' "${manifests[@]}"); export PRV_MANIFESTS
 
 if python3 -c 'import yaml' 2>/dev/null; then
   for manifest in "${manifests[@]}"; do
@@ -769,7 +773,7 @@ print(total)
   missing=''
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    [ -f "$path" ] || missing="$missing ${path#$ROOT/}"
+    [ -f "$path" ] || missing="$missing ${path#"$ROOT"/}"
   done <<< "$paths"
   assert_eq 'every script a step invokes exists' '' "$missing"
 
@@ -905,14 +909,19 @@ print('|'.join(problems))
 # ===============================================================================================
 group 'syntax of every script'
 # ===============================================================================================
-# Entry points and test scripts are executed, so they must parse on their own. lib/ modules are
-# sourced, and are covered by the scripts that source them instead.
-for script in "$ROOT"/scripts/*.sh "$ROOT"/actions/*/*.sh "$ROOT"/tests/*.sh; do
-  [ -e "$script" ] || continue
-  if bash -n "$script" 2>/dev/null; then
-    ok "bash -n ${script#$ROOT/}"
+# Every script must parse, and they are discovered rather than listed. `bash -n` stops at a `source`
+# line without reading the file, so lib/ is included too; an earlier version globbed directories the
+# multi-action layout had removed, matched nothing, and silently checked one file of twelve.
+mapfile -t all_scripts < <(
+  find "$ROOT" -name '*.sh' \
+    -not -path '*/.git/*' -not -path '*/.atl/*' -not -path "$ROOT/odd/*" -print \
+    | sed "s|^$ROOT/||" | sort
+)
+for script in "${all_scripts[@]}"; do
+  if bash -n "$ROOT/$script" 2>/dev/null; then
+    ok "bash -n $script"
   else
-    bad "bash -n ${script#$ROOT/}" "clean parse" "$(bash -n "$script" 2>&1 | head -3)"
+    bad "bash -n $script" "clean parse" "$(bash -n "$ROOT/$script" 2>&1 | head -3)"
   fi
 done
 
