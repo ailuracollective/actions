@@ -133,7 +133,9 @@ every defect in one run and fixes them in one push instead of discovering one pe
 
 **`skipped` is reported as skipped.** `pr-body-structure` cannot resolve a template when the pull
 request carries zero or several type labels. It reports `skipped` and names `type-label` as the
-owner, rather than a green tick for a validation that never happened.
+owner, rather than a green tick for a validation that never happened. The closing line of the summary
+reads `All N checks passed (M skipped, not run for this pull request)`: a skip is counted as a
+non-failure, so a required status is still satisfied, but it is never folded into the passed count.
 
 ### Linked issues, in GitHub or Linear
 
@@ -175,6 +177,43 @@ validated as path segments before being joined into a path, so a misconfigured `
 reported as a workflow defect rather than escaping the template directory. The template is read from
 the **base** branch through the contents API, and the action never runs `actions/checkout`: a job
 holding a token must not put untrusted fork code on the runner.
+
+### Exempt actors
+
+`dependabot[bot]` is the case that forces this. Its branches read
+`dependabot/npm_and_yarn/pkg-1.2.3`, and two independent rules reject them: the type segment
+`npm_and_yarn` is not in `branch-types`, and the ownership rule compares the branch's first segment
+(`dependabot`) with the author login (`dependabot[bot]`), which can never be equal. Dependabot's
+configurable `pull-request-branch-name.prefix` fixes neither the missing type segment nor the
+comparison, so the mechanism is an explicit list:
+
+```yaml
+      - uses: ailuracollective/actions/pull-request@v1
+        with:
+          skip-actors: dependabot[bot]
+          type-labels: feat,fix,chore,breaking-change
+```
+
+Both the branch validation and the PR policy actions take `skip-actors`, and the default is empty:
+nobody loses validation without opting in.
+
+- **The match is literal, whole-string and case-insensitive.** `dependabot` matches
+  `dependabot[bot]` and nothing else — not `dependabot-malicious-fork`, and not `robotics-team` when
+  you write `bot`. Entries are never patterns: a list you cannot read and verify is a list nobody
+  verifies, and a substring rule is the one mistake that silently exempts the wrong pull requests.
+  The tested identity is the **pull request author** (`github.event.pull_request.user.login`), not
+  the actor that triggered the event.
+- **An exemption is a `skip`, never a `pass`.** The check did not run, so it must not render a green
+  tick. The row names the exempt login, so the bypass is visible in the run's audit trail, and
+  `lib/report.sh` counts a skip as a non-failure — a required status stays satisfied.
+- **The exemption covers the whole action, not one check.** A Dependabot pull request fails the
+  linked-issue and type-label gates too, and per-check toggles are configuration nobody gets right.
+  The event gate is still evaluated first, so a check that does not run reports its own
+  not-applicable skip.
+- **Keep the list short and reviewed.** Whoever can edit the workflow can also remove the action
+  entirely, so the list is not a security boundary against a maintainer — it is a record of which
+  automated accounts you chose to stop validating. Every entry is a policy decision, not a
+  convenience.
 
 ## Issue triage
 

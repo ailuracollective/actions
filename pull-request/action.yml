@@ -59,6 +59,10 @@ inputs:
     description: Label a linked Linear issue must carry for the PR to pass.
     required: false
     default: 'approved'
+  skip-actors:
+    description: 'Comma-separated GitHub logins whose pull requests are exempt from every check in this action. Each entry is matched literally, as a whole login, case-insensitively — never as a pattern. An exempt pull request is reported as skipped, not passed.'
+    required: false
+    default: ''
   github-token:
     description: Token used for every API call. Defaults to the workflow's own token.
     required: false
@@ -73,6 +77,9 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
+        INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+        # The PR author, the identity the exemption list is matched against.
+        AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         GH_TOKEN: ${{ inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         INPUT_APPROVED_LABEL: ${{ inputs.approved-label }}
@@ -91,6 +98,8 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
+        INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+        AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         INPUT_TYPE_LABELS: ${{ inputs.type-labels }}
         # Untrusted labels: one JSON array, filtered with jq inside the script.
         PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
@@ -102,6 +111,8 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
+        INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+        AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         INPUT_TITLE_MIN: ${{ inputs.title-min }}
         INPUT_TITLE_MAX: ${{ inputs.title-max }}
         PR_TITLE: ${{ github.event.pull_request.title }}
@@ -113,6 +124,8 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
+        INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+        AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         INPUT_TYPE_LABELS: ${{ inputs.type-labels }}
         PR_TITLE: ${{ github.event.pull_request.title }}
       run: bash ${{ github.action_path }}/pr-title-conventional.sh
@@ -123,6 +136,8 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
+        INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
+        AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         GH_TOKEN: ${{ inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         # Base branch, never the PR head: on a fork pull request `github.sha` is attacker-controlled,
