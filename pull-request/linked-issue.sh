@@ -44,6 +44,7 @@ linear_label_lower=$(printf '%s' "$linear_label" | tr '[:upper:]' '[:lower:]')
 
 # The GraphQL document is static; the identifier travels as a variable, never inside the query text.
 # Safe to build with printf because prv_valid_linear_identifier has already constrained the value.
+# shellcheck disable=SC2016  # `$id` is a GraphQL variable, not a shell expansion
 linear_payload() {
   printf '{"query":"query IssueApproval($id: String!) { issue(id: $id) { identifier state { name } labels { nodes { name } } } }","variables":{"id":"%s"}}' "$1"
 }
@@ -55,6 +56,7 @@ check_github_issue() {
   local number=$1
 
   if [ "$source_github" = no ]; then
+    # shellcheck disable=SC2016  # backticks quote the input name in the message, not a subshell
     prv_error 'PR links a GitHub issue, but `github` is not an enabled linked-issue source' \
       "The body closes #$number, but 'linked-issue-sources' is '$INPUT_LINKED_ISSUE_SOURCES'. Fix: add 'github' to the 'linked-issue-sources' input, or change the body to reference an enabled source."
     prv_record fail "The body closes #$number but 'github' is not an enabled linked-issue source."
@@ -92,6 +94,7 @@ check_linear_issue() {
   local identifier=$1
 
   if [ "$source_linear" = no ]; then
+    # shellcheck disable=SC2016  # backticks quote the input name in the message, not a subshell
     prv_error 'PR links a Linear issue, but `linear` is not an enabled linked-issue source' \
       "The body closes $identifier, but 'linked-issue-sources' is '$INPUT_LINKED_ISSUE_SOURCES', which does not include 'linear'. Fix: add 'linear' to the 'linked-issue-sources' input, or change the body to reference an enabled source."
     prv_record fail "The body closes $identifier but 'linear' is not an enabled linked-issue source."
