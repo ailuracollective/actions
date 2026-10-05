@@ -25,6 +25,10 @@ inputs:
     description: 'Keep a single comment on the pull request carrying this action''s current status, updated on every run instead of a new comment per run. Needs `pull-requests: write` on the calling job. Off by default, because the check itself needs no token and this action exists so that a consumer who only wants branch naming grants nothing.'
     required: false
     default: 'false'
+  comment-author:
+    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; pass a token for this login in `github-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
+    required: false
+    default: 'AiluraKitty'
   github-token:
     description: Token used for every API call. Defaults to the workflow's own token.
     required: false
@@ -66,6 +70,7 @@ runs:
         # action never overwrites another's status.
         PRV_ACTION: 'branch-validation'
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
+        PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         GH_TOKEN: ${{ inputs.github-token }}
         GH_REPO: ${{ github.repository }}

@@ -66,6 +66,7 @@ setup() {
   export INPUT_AUTO_LABEL_NAME='status:needs-review'
   export INPUT_SKIP_ACTORS=''
   export INPUT_ENABLE_AUTO_LABEL=true
+  export INPUT_COMMENT_AUTHOR='AiluraKitty'
   export PR_TITLE='' PR_BODY='' PR_LABELS='[]' HEAD_REF='' AUTHOR_LOGIN='' BASE_SHA=base1234
   export PR_BASE_SHA=base1234 EVENT_SHA=eventsha
   export ISSUE_NUMBER=''
@@ -74,9 +75,10 @@ setup() {
   # The status comment's variables are unset, not blanked, because the shared report must publish
   # nothing at all when a run does not declare them: a blank PRV_ACTION is a manifest defect and is
   # reported as one, and a test that wanted silence would be testing the wrong thing.
-  unset PRV_ACTION PRV_PUBLISH_COMMENT PR_NUMBER
+  unset PRV_ACTION PRV_PUBLISH_COMMENT PRV_COMMENT_AUTHOR PR_NUMBER
   unset GITHUB_RUN_ID GITHUB_REPOSITORY GITHUB_SERVER_URL
   unset GH_STUB_COMMENTS_DIR GH_STUB_COMMENT_API GH_STUB_COMMENT_CAPTURE GH_STUB_COMMENT_PER_PAGE
+  unset GH_STUB_LOGIN GH_STUB_LOGIN_API
 }
 
 # A canned Linear GraphQL response for the given label names.
@@ -203,7 +205,7 @@ pr_comment_run() { # [VAR=value...]
   env RESULTS_DIR="$RESULTS_DIR" GITHUB_STEP_SUMMARY="$GITHUB_STEP_SUMMARY" \
     GITHUB_EVENT_NAME=pull_request GITHUB_RUN_ID=1700000000 \
     GITHUB_REPOSITORY=owner/repo GITHUB_SERVER_URL=https://github.com \
-    PRV_ACTION=pull-request PR_NUMBER=12 \
+    PRV_ACTION=pull-request PRV_COMMENT_AUTHOR=AiluraKitty PR_NUMBER=12 \
     PRV_CHECKS="$PRV_CHECK_LIST" PRV_LABELS="$PRV_LABEL_LIST" PRV_TITLE='Pull request policy' \
     "$@" bash "$ROOT/lib/report.sh" 2>&1
 }
@@ -966,6 +968,56 @@ assert_eq 'a run older than the comment it found passes' 0 "$code"
 assert_contains 'and says why it stood aside' 'newer run' "$out"
 assert_eq 'the newer comment is untouched' "$before" "$(comment_body 1)"
 assert_not_contains 'and nothing was written' 'PATCH' "$(comment_calls)"
+
+# A comment is authored by the owner of the token that writes it, so the identity has to be held to
+# something: the workflow's own token would write as `github-actions[bot]`, which belongs to nobody
+# who can edit or delete what it posted. The account is read with `gh api user`, which is the only
+# place GitHub answers that question.
+setup_compliant_pr; setup_comment
+export GH_STUB_LOGIN='github-actions[bot]'
+out=$(pr_comment_run)
+code=$?
+assert_eq 'a token that is not AiluraKitty does not fail the pull request' 0 "$code"
+assert_contains 'it warns' 'warning::' "$out"
+assert_contains 'naming the identity the token actually has' 'github-actions[bot]' "$out"
+assert_contains 'and the one it has to be' 'AiluraKitty' "$out"
+assert_contains 'with the input that would accept it' 'comment-author: github-actions[bot]' "$out"
+assert_eq 'and publishes nothing at all' '' "$(comment_calls)"
+assert_eq 'so the pull request gains no comment' 0 "$(comment_count)"
+assert_contains 'while the job summary is still written' '| ✅ | Linked issue |' "$(cat "$GITHUB_STEP_SUMMARY")"
+
+# The organisation's own token does publish, and the login is matched case-insensitively because
+# GitHub logins are: `AiluraKitty` and `ailurakatty` are one account.
+setup_compliant_pr; setup_comment
+export GH_STUB_LOGIN='ailurakitty'
+out=$(pr_comment_run PRV_COMMENT_AUTHOR='AiluraKitty')
+assert_eq 'the right token publishes' 1 "$(comment_count)"
+assert_not_contains 'regardless of how the login is cased' 'No status comment published' "$out"
+
+# A consumer that wants a different account can name it, and gets exactly that account's comment.
+setup_compliant_pr; setup_comment
+export GH_STUB_LOGIN='another-bot'
+out=$(pr_comment_run PRV_COMMENT_AUTHOR='another-bot')
+assert_eq 'a configured account is honoured' 1 "$(comment_count)"
+assert_not_contains 'and nothing warns about it' 'No status comment published' "$out"
+
+# An identity that cannot be read is not an identity that matched: a token whose owner is unknown
+# must not be assumed to be the right one.
+setup_compliant_pr; setup_comment
+export GH_STUB_LOGIN_API=fail
+out=$(pr_comment_run)
+code=$?
+assert_eq 'an unreadable identity does not fail the pull request' 0 "$code"
+assert_contains 'it warns rather than posting under an unknown author' 'identity of the token could not be read' "$out"
+assert_eq 'and publishes nothing' 0 "$(comment_count)"
+
+# No expected identity at all is a report step that forgot an input, not a licence to post as anyone.
+setup_compliant_pr; setup_comment
+out=$(pr_comment_run PRV_COMMENT_AUTHOR=)
+code=$?
+assert_eq 'a missing author does not fail the pull request' 0 "$code"
+assert_contains 'it names the variable to set' 'PRV_COMMENT_AUTHOR' "$out"
+assert_eq 'and publishes nothing' 0 "$(comment_count)"
 
 # The opt-out is a manifest input rather than an inference from a refused token: a consumer who does
 # not want a comment should not also have to read a warning telling them to grant one.

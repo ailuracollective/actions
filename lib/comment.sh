@@ -18,6 +18,10 @@
 #   PRV_ACTION            the key that owns the comment, one per action. The only thing that tells
 #                         one action's comment from another's. Unset means nothing is published.
 #   PRV_PUBLISH_COMMENT   'false' opts out, which is what `enable-status-comment: false` passes.
+#   PRV_COMMENT_AUTHOR    the login that must own the comment, from the `comment-author` input. A
+#                         token writes as whoever it belongs to, so this is the only way to hold the
+#                         publishing identity to AiluraKitty rather than to whatever token a
+#                         consumer happened to pass.
 #   PR_NUMBER             the pull request to comment on. Not a runner default, so the manifest passes it.
 #   GH_TOKEN              the token for the comment API: `inputs.github-token`, which may be neither the
 #                         workflow's token nor a token that may write comments.
@@ -39,6 +43,45 @@ prv_comment_run_id() {
     '' | *[!0-9]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+# prv_comment_login — the account the comment would be written as, or nothing.
+#
+# `gh api user` is the only place GitHub answers that: a comment's author is the owner of the token
+# that wrote it, not something the payload can carry, so the identity has to be asked for rather
+# than declared. A GitHub App installation token answers with the app slug instead of a user, which
+# is why the comparison below rejects one.
+prv_comment_login() {
+  local login
+  # Captured first, trimmed second: in a pipeline the exit status is the last command's, and a token
+  # whose identity cannot be read would then look like an empty one rather than a failed one.
+  login=$(gh api user --jq .login 2>/dev/null) || return 1
+  printf '%s' "$login" | tr -d '\r\n'
+}
+
+# prv_comment_author <expected> — true when the comment will be written as <expected>.
+#
+# A status board that lies about its own author is the failure this module must never have: a reader
+# who sees `github-actions[bot]` learns nothing about who to ask, and the next thing to do is ask the
+# wrong person. So a token that is not the expected account publishes nothing and says why, naming
+# both logins — the one it is and the one it has to be. Returns 1 either way, and the caller turns
+# that into a warning rather than a verdict.
+prv_comment_author() {
+  local expected=$1 actual
+  actual=$(prv_comment_login) || true
+  if [ -z "$expected" ]; then
+    prv_warn 'No status comment published: the report step declares no PRV_COMMENT_AUTHOR, so there is no identity to hold the comment to. Fix: set PRV_COMMENT_AUTHOR in the report step. The checks are unaffected.'
+    return 1
+  fi
+  if [ -z "$actual" ]; then
+    prv_warn "No status comment published: the identity of the token could not be read, so nothing can say whether the comment would be written as $expected. Fix: check that the token is valid and that 'gh api user' works for it."
+    return 1
+  fi
+  # Case-insensitive, because GitHub logins are: `AiluraKitty` and `ailurakatty` are one account.
+  if [ "${actual,,}" != "${expected,,}" ]; then
+    prv_warn "No status comment published: the token belongs to $actual, so the comment would be written as $actual and not as $expected. Fix: pass a token for $expected in the report step's GH_TOKEN, or set 'comment-author: $actual' to accept this identity, or set 'enable-status-comment: false'."
+    return 1
+  fi
 }
 
 # prv_comment_marker <key> — the marker prefix that identifies this action's comment.
@@ -164,6 +207,9 @@ prv_publish_status_comment() {
     prv_warn 'No status comment published: the report step has no GH_REPO/GH_TOKEN. Fix: pass "GH_TOKEN: \${{ inputs.github-token }}" and "GH_REPO: \${{ github.repository }}" in the report step.'
     return 1
   fi
+  # Before the token is used for anything: writing as the wrong account is worse than not writing,
+  # because the wrong account's comment is a comment nobody can take back or correct.
+  prv_comment_author "${PRV_COMMENT_AUTHOR:-}" || return 1
 
   local tmp=${RUNNER_TEMP:-/tmp}
   local page="$tmp/prv-comment-page.json"

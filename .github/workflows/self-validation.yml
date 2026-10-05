@@ -25,8 +25,7 @@ jobs:
     # why its status comment is off by default. It is turned on here for the one thing layer 3 can
     # test and the offline suite can only fake — two actions, two comments, on one real pull request,
     # each updating only the one its own marker names. Fork pull requests never reach either job.
-    permissions:
-      pull-requests: write
+    permissions: {}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Seven, and it is a TITLE vocabulary rather than a label one: a branch segment is the
@@ -35,21 +34,27 @@ jobs:
         with:
           branch-types: feat,fix,docs,chore,ci,test,refactor
           enable-status-comment: true
+          # A comment is authored by the owner of the token that writes it, and the workflow's own
+          # token writes as `github-actions[bot]`. This account's PAT is what makes the status
+          # comment belong to the organisation rather than to the runner. The job grants nothing,
+          # because the PAT carries its own scopes.
+          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-author: AiluraKitty
 
   pr-policy:
     name: Pull request policy
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # `contents: read` is what lets the body-structure check read the template off the base branch,
-    # and `pull-requests: write` is the status comment — a write the checks themselves never need,
-    # which is why this job's own comment is posted by the action rather than by the workflow.
+    # `contents: read` is what lets the body-structure check read the template off the base branch.
+    # The status comment is deliberately NOT in this block: it is written with the PAT below, whose
+    # own scopes carry it, so the job grants the checks read-only and nothing more.
     permissions:
-      pull-requests: write
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # All five at their defaults. A disabled check cannot fail, and a check that never fails is
-      # not being tested.
+      # not being tested. This repository's own status comment is written by Ailura Kitty, so the
+      # run that gates every change here is the same code path a consumer gets.
       - uses: ./pull-request
         with:
           # This repository carries the prefixed `type/*` family, like every other in the
@@ -67,6 +72,11 @@ jobs:
           title-min: 15
           title-max: 72
           linked-issue-sources: github
+          # The status comment is authored by whoever holds the writing token, so the action is given
+          # the organisation's own account rather than the workflow token. Same reason as the branch
+          # job: a comment nobody in the organisation owns is a comment nobody can edit later.
+          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-author: AiluraKitty
           # `status/ready`, with the slash: the status family uses slash names and the remote
           # carries `status/ready`. `status:approved` was never created on any remote in this
           # organisation, so the linked-issue gate demanded a label nothing could ever carry.

@@ -94,6 +94,7 @@ grant the comment needs:
         with:
           branch-types: feat,fix,chore
           enable-status-comment: true
+          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
 ```
 
 It runs on `opened` only. GitHub cannot rename a branch an open pull request points at, so
@@ -165,11 +166,13 @@ can validate branch names granting nothing at all — and either way is one inpu
     steps:
       - uses: ailuracollective/actions/pull-request@v1
         with:
+          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           enable-status-comment: false
 ```
 
 The body is the same rendering as the job summary — every check, its verdict and its detail, the
-counts, and a link to the workflow run — preceded by an invisible HTML marker naming the action:
+counts, and a link to the workflow run — posted by [Ailura Kitty](#who-writes-the-comment), and
+preceded by an invisible HTML marker naming the action:
 
 ```
 <!-- ailuracollective-actions:status action=pull-request run=1700000000 -->
@@ -195,6 +198,43 @@ still fail the pull requests it found defects in, and a gate that passes must no
 comment. A refused token names `pull-requests: write` as the fix, and notes the case no permission
 block can widen: a `pull_request` trigger from a fork gets a read-only token, so fork pull requests
 get the job summary and no comment. The same limitation the Linear key already has.
+
+### Who writes the comment
+
+**Ailura Kitty**, and the action refuses to post under any other identity.
+
+A GitHub comment is authored by the account that owns the token that wrote it — the payload cannot
+carry an author. The workflow's own token would therefore post as `github-actions[bot]`: nobody can
+edit or delete what it wrote, and the comment outlives the person who could fix it. So the publishing
+token belongs to the organisation:
+
+```yaml
+jobs:
+  pr-policy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: ailuracollective/actions/pull-request@v1
+        with:
+          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-author: AiluraKitty
+```
+
+`comment-author` defaults to `AiluraKitty` and is checked against `gh api user` before anything is
+written. Two properties follow from making that a rule rather than a convention:
+
+- **Nothing is posted under an identity nobody chose.** A token belonging to another account — a
+  bot, a maintainer's personal token, a GitHub App installation — publishes nothing and warns,
+  naming both logins and the three ways to resolve it.
+- **A token whose identity cannot be read publishes nothing either.** An unreadable identity is not
+  an identity that matched.
+
+The job's own `permissions` block still governs the checks, which only read: passing Kitty's token
+widens what the *comment* can do without granting the checks anything.
+
+Fork pull requests cannot comment at all, for the reason above: no secrets, so no token that could
+be Kitty's.
 
 ### Two vocabularies, two inputs
 
@@ -468,6 +508,7 @@ selects and what the `PR_NUMBER`/`GH_TOKEN`/`GH_REPO` trio points it at:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         PRV_ACTION: 'my-action'
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
+        PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         GH_TOKEN: ${{ inputs.github-token }}
         GH_REPO: ${{ github.repository }}
@@ -483,6 +524,11 @@ only the comment carrying its own key. Omit it and nothing is published — the 
 warning naming the variable, rather than posting a comment no later run could find. `PR_NUMBER` is not
 a runner default, so it has to be passed; `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` are, and are read
 from the runner instead of from the manifest because they cannot be misconfigured.
+
+`PRV_COMMENT_AUTHOR` is the login the comment has to belong to, and the report checks the token
+against it before writing anything: a comment is authored by whoever holds the writing token, so an
+unheld identity means an anonymous `github-actions[bot]` comment nobody can later correct. See [Who
+writes the comment](#who-writes-the-comment).
 
 **4. `<name>/README.md`.** Usage, outputs, and what the action does *not* do.
 
@@ -501,6 +547,9 @@ manifest, syntax and discovery checks come for free.
 - **Reporting is additive.** The job summary is written first and is the reporting this hub
   guarantees; the status comment is published on top of it with its failures swallowed, so nothing
   about the pull request is decided by whether a comment could be written.
+- **A comment is published only under a chosen identity.** The token's account is read and compared
+  against the configured author, because a comment's author is the token's owner and an unheld one
+  belongs to nobody who can edit it.
 - A check that records nothing is reported as `error`, never as a pass.
 - Every script uses `set -euo pipefail`.
 - Comments are one line, and only where a competent editor would otherwise get it wrong: security

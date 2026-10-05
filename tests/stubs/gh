@@ -10,6 +10,8 @@
 #   GH_STUB_COMMENTS_DIR      existing comments, one file each: `<id>.body` holds the raw body. A
 #                             store a test can count and diff without a JSON parser of its own, and
 #                             a fixture a test seeds with `printf`.
+#   GH_STUB_LOGIN             the login `gh api user` answers with (default AiluraKitty)
+#   GH_STUB_LOGIN_API         `ok` (default) | `fail`, so a token whose identity cannot be read
 #   GH_STUB_COMMENT_API       `ok` (default) | `403` | `fail`, applied to every comment call
 #   GH_STUB_COMMENT_CAPTURE   path that receives one `METHOD<TAB>PATH` line per comment call
 #   GH_STUB_COMMENT_PER_PAGE  overrides the page size the code asked for, so a test can force
@@ -72,6 +74,39 @@ comment_ids() {
     printf '%s\n' "${f%.body}"
   done | sort -n
 }
+
+# `gh api user --jq .login` — the account the token belongs to, which is the comment's author. Tested
+# before the comment endpoints: a comment collection never matches `user`, and reading it as one
+# would report the token's owner instead of the token's identity.
+if [ "${args[0]:-}" = 'api' ] && [ "${args[1]:-}" = 'user' ]; then
+  case ${GH_STUB_LOGIN_API:-ok} in
+    fail)
+      echo 'HTTP 401: Bad credentials' >&2
+      exit 1
+      ;;
+  esac
+  # `--jq` is honoured, because the caller uses it: gh applies the filter itself, so a stub that
+  # ignored it would return an object where the caller expects a login and the two would disagree
+  # about what the token's identity is.
+  filter=''
+  i=2
+  while [ "$i" -lt "${#args[@]}" ]; do
+    case ${args[$i]} in
+      --jq) filter=${args[$((i + 1))]:-}; i=$((i + 2)) ;;
+      -*) i=$((i + 1)) ;;
+      *) i=$((i + 1)) ;;
+    esac
+  done
+  case $filter in
+    '' | .) printf '{"login":"%s"}\n' "${GH_STUB_LOGIN:-AiluraKitty}" ;;
+    .login) printf '%s\n' "${GH_STUB_LOGIN:-AiluraKitty}" ;;
+    *)
+      echo "gh-stub: unsupported --jq filter '$filter'" >&2
+      exit 1
+      ;;
+  esac
+  exit 0
+fi
 
 # `gh issue edit <n> --repo <r> --add-label <l>`
 if [ "${args[0]:-}" = 'issue' ] && [ "${args[1]:-}" = 'edit' ]; then

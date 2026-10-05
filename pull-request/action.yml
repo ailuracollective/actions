@@ -71,6 +71,10 @@ inputs:
     description: 'Keep a single comment on the pull request carrying this action''s current status, updated on every run instead of a new comment per run. Needs `pull-requests: write` on the calling job; set this to `false` to publish nothing.'
     required: false
     default: 'true'
+  comment-author:
+    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; pass a token for this login in `github-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
+    required: false
+    default: 'AiluraKitty'
   github-token:
     description: Token used for every API call. Defaults to the workflow's own token.
     required: false
@@ -172,6 +176,11 @@ runs:
         # never another's, so a pull request carries one status board per action.
         PRV_ACTION: 'pull-request'
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
+        # Who the comment must be written as. A comment is authored by the owner of the token that
+        # writes it, so this is the input that makes the comment Ailura Kitty's and not the
+        # workflow's; the report refuses to publish under any other identity rather than posting one
+        # the organisation does not own.
+        PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         # Where the comment lands, and with what. `PR_NUMBER` is not a runner default, and writing a
         # comment needs a token the checks themselves never asked for: they only ever read.
         PR_NUMBER: ${{ github.event.pull_request.number }}

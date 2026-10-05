@@ -48,6 +48,7 @@ runs:
         # written on a `pull_request` event only, and this action runs on `issues`, where there is no
         # pull request conversation to comment in.
         PRV_ACTION: 'triage'
+        PRV_COMMENT_AUTHOR: 'AiluraKitty'
         PR_NUMBER: ${{ github.event.pull_request.number }}
         GH_TOKEN: ${{ inputs.github-token }}
         GH_REPO: ${{ github.repository }}
