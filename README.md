@@ -7,14 +7,14 @@ pull request's metadata and its linked issues, and they never check out or run t
 
 | Action | What it does | Adopt with |
 | --- | --- | --- |
-| **Branch validation** | Requires the head branch to read `<author>/<type>/<description>` and to be owned by the PR author | `ailuracollective/actions/branch-validation@v1` |
-| **Pull request policy** | Linked issue (GitHub `#N` or Linear `TEAMKEY-N`), type label, title shape and length, description structure | `ailuracollective/actions/pull-request@v1` |
-| **Issue triage** | Applies a triage label to newly opened issues | `ailuracollective/actions/triage@v1` |
-| **Pull request template resolver** | Resolves a type's PR template and reports it through outputs, for use in a job of your own | `ailuracollective/actions/pull-request-template@v1` |
+| **Branch validation** | Requires the head branch to read `<author>/<type>/<description>` and to be owned by the PR author | `ailuracollective/actions/branch-validation@v2` |
+| **Pull request policy** | Linked issue (GitHub `#N` or Linear `TEAMKEY-N`), type label, title shape and length, description structure | `ailuracollective/actions/pull-request@v2` |
+| **Issue triage** | Applies a triage label to newly opened issues | `ailuracollective/actions/triage@v2` |
+| **Pull request template resolver** | Resolves a type's PR template and reports it through outputs, for use in a job of your own | `ailuracollective/actions/pull-request-template@v2` |
 
 The root `action.yml` is not in that table because it is not an action. It is the index the four are
 listed under, and adopting it by mistake fails on purpose: a consumer who writes
-`ailuracollective/actions@v1` gets a failed run naming all four paths above.
+`ailuracollective/actions@v2` gets a failed run naming all four paths above.
 
 They are separate because they answer different questions and need different permissions. Branch
 naming needs no token at all, which is why its [status comment](#the-status-comment) is off by
@@ -31,7 +31,7 @@ root. The root manifest here is that listing: its `name`, **Contribution policy*
 repository appears under, and the four actions keep their own paths underneath it. The listing is an
 index, not a fifth action — it declares no inputs, runs no check, and needs no token.
 
-Adopting it by mistake fails loudly, on purpose. `ailuracollective/actions@v1` resolves to the
+Adopting it by mistake fails loudly, on purpose. `ailuracollective/actions@v2` resolves to the
 index, the single step errors, and the job fails naming `branch-validation`, `pull-request`,
 `triage` and `pull-request-template`. A green run there would have claimed a validation that never
 happened.
@@ -41,26 +41,50 @@ happened.
 This repository holds several actions, and a git tag versions the **whole repository**, so every
 action in it moves version together. There is no per-action version.
 
-`v1` is the moving major line. It carries the root index and all four directory actions, and every
-one of them resolves at `@v1` today. A change that breaks a consumer — the move of branch validation
-out of the repository root was one — moves the whole repository to a new major rather than shipping
-under `v1`.
+`v2` is the moving major line. It carries the root index and all four directory actions, and every
+one of them resolves at `@v2` today. A change that breaks a consumer — the move of branch validation
+out of the repository root was one, and the status comment's `pull-requests: write` requirement was
+another — moves the whole repository to a new major rather than shipping under the current one.
 
 Two refs, and they do different jobs. This repository publishes the moving major line, not
 patch-level tags:
 
 | Ref | What it is | Use it when |
 | --- | --- | --- |
-| `v1` | A floating alias meaning **"the latest 1.\*"** | You want security and critical fixes without touching your workflow |
-| `89420d0…` | A commit SHA | You want the only truly immutable ref GitHub offers |
+| `v2` | A floating alias meaning **"the latest 2.\*"** | You want fixes and new features without touching your workflow |
+| `v1` | The previous major, frozen at the commit before `v2` | You are not ready to grant `pull-requests: write` yet |
+| `644733f…` | A commit SHA | You want the only truly immutable ref GitHub offers |
 
 This follows GitHub's own guidance for actions: binding to a major version receives fixes while
 staying compatible, and a major version must guarantee compatibility. A change that breaks a consumer
-bumps the whole repository to `v2`, never silently under `v1`.
+bumps the whole repository to the next major, never silently under a tag consumers already hold.
+
+### Why the status comment was a major
+
+`v2` is not a rename and not a repackaging. Everything on `v1` still resolves and still behaves the
+same, but the PR policy now publishes its report into the pull request conversation by default, and
+that needs a permission `v1` never asked for:
+
+| | `v1` | `v2` |
+| --- | --- | --- |
+| Where the report is published | job summary only | job summary **and** one sticky comment per action |
+| Permission to publish | none beyond what the checks already need | `pull-requests: write` on the calling job, **or** a `comment-token` that carries it |
+| Token that writes it | — | `comment-token`, falling back to `github-token` |
+
+The comment is on by default because the job summary is only where somebody is already looking at the
+run, and reading a gate's verdict should not require opening a second tab. Turning it off is one
+input — `enable-status-comment: false` — and that is the honest migration for a repository that would
+rather not widen its permissions yet. `v1` stays published for exactly that repository.
+
+Two properties make this safe to ship as a default rather than as an opt-in. Every comment failure is
+a warning that leaves the verdict untouched, so a refused token cannot fail a pull request the gate
+found defects in, and cannot pass one either. And the comment refuses to publish under any identity
+but the one you name — see [Who writes the comment](#who-writes-the-comment) — so a pull request
+never accumulates a status board nobody in the organisation can edit or delete.
 
 Prefer the SHA. GitHub documents a full commit SHA as *"the only way to use an action as an
 immutable release"*, because a tag can be moved or deleted by anyone who compromises this repository,
-and organization policies can require SHA pinning. A floating `v1` is the convenient option, not the
+and organization policies can require SHA pinning. A floating major is the convenient option, not the
 safe one.
 
 Never reference a branch. A branch ref means anyone with push access decides what runs on your pull
@@ -78,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - uses: ailuracollective/actions/branch-validation@v1
+      - uses: ailuracollective/actions/branch-validation@v2
         with:
           branch-types: feat,fix,chore
 ```
@@ -91,7 +115,7 @@ token is not the one the checks read with:
 ```yaml
     permissions: {}
     steps:
-      - uses: ailuracollective/actions/branch-validation@v1
+      - uses: ailuracollective/actions/branch-validation@v2
         with:
           branch-types: feat,fix,chore
           enable-status-comment: true
@@ -122,7 +146,7 @@ jobs:
       pull-requests: read
       contents: read
     steps:
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           title-max: 80
           type-labels: feat,fix,chore,breaking-change
@@ -172,7 +196,7 @@ can validate branch names granting nothing at all — and either way is one inpu
 
 ```yaml
     steps:
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           enable-status-comment: false
@@ -224,7 +248,7 @@ jobs:
       pull-requests: read
       contents: read
     steps:
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           comment-author: AiluraKitty
@@ -267,7 +291,7 @@ Labels and titles are different sets, and one input cannot be both:
 nothing extra. Declare the second input only when they differ:
 
 ```yaml
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           type-labels: type/feature,type/bug,type/documentation,type/improvement,type/task
           title-types: feat,fix,docs,chore,style,refactor,perf,test,build,ci,revert,breaking-change
@@ -286,7 +310,7 @@ closing keyword, so a stray identifier pasted out of a log never satisfies the g
 by default**.
 
 ```yaml
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           linked-issue-sources: github,linear
           linear-approved-label: approved
@@ -333,7 +357,7 @@ configurable `pull-request-branch-name.prefix` fixes neither the missing type se
 comparison, so the mechanism is an explicit list:
 
 ```yaml
-      - uses: ailuracollective/actions/pull-request@v1
+      - uses: ailuracollective/actions/pull-request@v2
         with:
           skip-actors: dependabot[bot]
           type-labels: feat,fix,chore,breaking-change
@@ -373,7 +397,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: ailuracollective/actions/triage@v1
+      - uses: ailuracollective/actions/triage@v2
         with:
           auto-label-name: status:needs-review
 ```
@@ -389,7 +413,7 @@ For consumers who want template resolution inside a job of their own, rather tha
 gate.
 
 ```yaml
-- uses: ailuracollective/actions/pull-request-template@v1
+- uses: ailuracollective/actions/pull-request-template@v2
   id: tpl
   with:
     type: feat
@@ -459,7 +483,7 @@ correct in isolation and never runs.
 
 The split between layer 1 and layer 3 is the one that matters. A directory path means the pull
 request is validated by the code the pull request contains, so a change that breaks the policy fails
-its own run — that is the signal, and it is why layer 3 uses `./<name>` and not `@v1`. The cost is
+its own run — that is the signal, and it is why layer 3 uses `./<name>` and not `@v2`. The cost is
 that the published tag is untested by it, which is what the fourth layer is for. Run the smoke test
 after a release: open a pull request, let it fail on purpose, and read the message as the author who
 will receive it. Nothing in the suite checks whether a failure message is useful to a human.
@@ -492,7 +516,7 @@ reject any root manifest that grows an input or a check step.
 **1. `<name>/action.yml`.** A composite action, same shape as any other here. Put the directory at the
 repository root, not under an `actions/` folder: the path in `uses:` is the directory path within the
 repository, so `actions/<name>/` would make consumers write the doubled
-`ailuracollective/actions/actions/<name>@v1`.
+`ailuracollective/actions/actions/<name>@v2`.
 
 **2. `<name>/<verb>.sh`.** The entry point, one per check if it has several:
 
