@@ -18,10 +18,11 @@ listed under, and adopting it by mistake fails on purpose: a consumer who writes
 
 They are separate because they answer different questions and need different permissions. Branch
 naming needs no token at all, which is why its [status comment](#the-status-comment) is off by
-default there. The PR policy needs `contents: read` and `pull-requests: write` — read for the
-checks, write for the status comment. Issue triage needs `issues: write` — the only one, and
-the only one that cannot work on a pull request from a fork, because a fork event carries no secrets.
-A consumer that only wants branch naming should not have to grant the others.
+default there. The PR policy needs `contents: read` and `pull-requests: read` — both are reads, and
+publishing its status comment is done with a token of its own rather than by widening these. Issue
+triage needs `issues: write` — the only one that writes, and the only one that cannot work on a
+pull request from a fork, because a fork event carries no secrets. A consumer that only wants branch
+naming should not have to grant the others.
 
 ### One Marketplace listing
 
@@ -83,19 +84,23 @@ jobs:
 ```
 
 `permissions: {}` is correct and worth keeping: this check reads nothing from the API, and its
-[status comment](#the-status-comment) is **off by default here** for the same reason. Opt in with the
-grant the comment needs:
+[status comment](#the-status-comment) is **off by default here** for the same reason. Opt in with
+the token the comment needs, and read [Who writes the comment](#who-writes-the-comment) for why that
+token is not the one the checks read with:
 
 ```yaml
-    permissions:
-      pull-requests: write
+    permissions: {}
     steps:
       - uses: ailuracollective/actions/branch-validation@v1
         with:
           branch-types: feat,fix,chore
           enable-status-comment: true
-          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
 ```
+
+A `pull-requests: write` grant also works and is the whole answer for a repository with no
+organisation account to post as — but then the comment belongs to `github-actions[bot]`, and this
+action will refuse to post it unless you say so with `comment-author: github-actions[bot]`.
 
 It runs on `opened` only. GitHub cannot rename a branch an open pull request points at, so
 `head.ref` is fixed for the life of the pull request, and re-validating it on every event would spend
@@ -111,9 +116,10 @@ on:
 jobs:
   pr-policy:
     runs-on: ubuntu-latest
-    # One token serves all five checks and the status comment, so least privilege is a single block.
+    # What the five checks need. Nothing here can change the pull request: they read labels, the
+    # base branch and the issue a `Closes` points at, and stop there.
     permissions:
-      pull-requests: write
+      pull-requests: read
       contents: read
     steps:
       - uses: ailuracollective/actions/pull-request@v1
@@ -121,6 +127,10 @@ jobs:
           title-max: 80
           type-labels: feat,fix,chore,breaking-change
           enable-title-length: false
+          # Publishing the comment is a write, so it gets a token of its own. Optional: a job that
+          # grants `pull-requests: write` and says nothing here works too, at the cost of an author
+          # nobody in the organisation owns.
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
 ```
 
 ### Checks
@@ -161,12 +171,10 @@ by default for the PR policy, off by default for branch validation — that acti
 can validate branch names granting nothing at all — and either way is one input away:
 
 ```yaml
-    permissions:
-      pull-requests: write
     steps:
       - uses: ailuracollective/actions/pull-request@v1
         with:
-          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           enable-status-comment: false
 ```
 
@@ -213,11 +221,12 @@ jobs:
   pr-policy:
     runs-on: ubuntu-latest
     permissions:
+      pull-requests: read
       contents: read
     steps:
       - uses: ailuracollective/actions/pull-request@v1
         with:
-          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           comment-author: AiluraKitty
 ```
 
@@ -230,11 +239,20 @@ written. Two properties follow from making that a rule rather than a convention:
 - **A token whose identity cannot be read publishes nothing either.** An unreadable identity is not
   an identity that matched.
 
-The job's own `permissions` block still governs the checks, which only read: passing Kitty's token
-widens what the *comment* can do without granting the checks anything.
+The writing token is `comment-token`, not `github-token`, and that split is the load-bearing part.
+Publishing a comment is the only write this action makes, so it is the only call that needs a token
+with the power to write; `github-token` still goes to the five checks, which only read, and stays
+grantable as the read-only scope it is. An organisation's personal access token can post as a person
+and can be spent anywhere — a stranger's pull request should not get to hold one while five scripts
+judge it. Consumers who have no opinion about authorship pass neither input and get the behaviour
+they had: `comment-token` falls back to `github-token`.
+
+The token belongs in a secret. A `with:` value is echoed into the step's rendered command; an `env`
+value is not, which is why the report reads `GH_TOKEN` from the environment and why the workflow
+above passes the secret by name rather than by value.
 
 Fork pull requests cannot comment at all, for the reason above: no secrets, so no token that could
-be Kitty's.
+be Kitty's. They get the job summary, which is the reporting this hub guarantees.
 
 ### Two vocabularies, two inputs
 
@@ -510,7 +528,7 @@ selects and what the `PR_NUMBER`/`GH_TOKEN`/`GH_REPO` trio points it at:
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
         PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ inputs.comment-token || inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         PRV_TITLE: 'My action'
         PRV_CHECKS: 'my-check|my-other-check'
@@ -528,7 +546,9 @@ from the runner instead of from the manifest because they cannot be misconfigure
 `PRV_COMMENT_AUTHOR` is the login the comment has to belong to, and the report checks the token
 against it before writing anything: a comment is authored by whoever holds the writing token, so an
 unheld identity means an anonymous `github-actions[bot]` comment nobody can later correct. See [Who
-writes the comment](#who-writes-the-comment).
+writes the comment](#who-writes-the-comment). Give the manifest a `comment-token` input and fall
+back to `github-token` the way the line above does: the comment is the only write in the action, and
+it is the only one that should ever see a token with the power to write.
 
 **4. `<name>/README.md`.** Usage, outputs, and what the action does *not* do.
 

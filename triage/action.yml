@@ -13,6 +13,10 @@ inputs:
     description: Label applied to a newly opened issue.
     required: false
     default: 'status:needs-review'
+  comment-token:
+    description: 'Token the status comment would be published with. Defaults to `github-token`. Inert on the `issues` events this action runs on, and declared so that the report steps of all three actions are configured identically.'
+    required: false
+    default: ''
   github-token:
     description: Token used for the label write. Defaults to the workflow's own token.
     required: false
@@ -50,7 +54,7 @@ runs:
         PRV_ACTION: 'triage'
         PRV_COMMENT_AUTHOR: 'AiluraKitty'
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ inputs.comment-token || inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         PRV_TITLE: 'Issue triage'
         PRV_CHECKS: 'auto-label'

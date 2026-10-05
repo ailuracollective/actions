@@ -23,8 +23,11 @@
 #                         publishing identity to AiluraKitty rather than to whatever token a
 #                         consumer happened to pass.
 #   PR_NUMBER             the pull request to comment on. Not a runner default, so the manifest passes it.
-#   GH_TOKEN              the token for the comment API: `inputs.github-token`, which may be neither the
-#                         workflow's token nor a token that may write comments.
+#   GH_TOKEN              the token for the comment API: `inputs.comment-token` falling back to
+#                         `inputs.github-token`, so a consumer who has no opinion about authorship
+#                         passes nothing extra. A separate input from the one the checks read with
+#                         because this is the only call in the action that writes anything: keeping
+#                         a write-scoped token out of the checks' hands is worth an input.
 #   GH_REPO               owner/repo. Falls back to the runner default GITHUB_REPOSITORY.
 # Read from the runner's own defaults, never from a manifest, because they cannot be misconfigured:
 #   GITHUB_EVENT_NAME, GITHUB_RUN_ID, GITHUB_REPOSITORY, GITHUB_SERVER_URL
@@ -79,7 +82,7 @@ prv_comment_author() {
   fi
   # Case-insensitive, because GitHub logins are: `AiluraKitty` and `ailurakatty` are one account.
   if [ "${actual,,}" != "${expected,,}" ]; then
-    prv_warn "No status comment published: the token belongs to $actual, so the comment would be written as $actual and not as $expected. Fix: pass a token for $expected in the report step's GH_TOKEN, or set 'comment-author: $actual' to accept this identity, or set 'enable-status-comment: false'."
+    prv_warn "No status comment published: the token belongs to $actual, so the comment would be written as $actual and not as $expected. Fix: pass a token for $expected in 'comment-token', or set 'comment-author: $actual' to accept this identity, or set 'enable-status-comment: false'."
     return 1
   fi
 }

@@ -72,11 +72,15 @@ inputs:
     required: false
     default: 'true'
   comment-author:
-    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; pass a token for this login in `github-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
+    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; give the report a token for this login in `comment-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
     required: false
     default: 'AiluraKitty'
+  comment-token:
+    description: 'Token the status comment is published with, which need not be the one the checks read with. Defaults to `github-token`. Set it when the comment has to be authored by an organisation account: a write-scoped personal access token is then handed to the report alone and never to a check script.'
+    required: false
+    default: ''
   github-token:
-    description: Token used for every API call. Defaults to the workflow's own token.
+    description: Token used for every API call the checks make. Defaults to the workflow's own token.
     required: false
     default: ${{ github.token }}
 
@@ -181,10 +185,13 @@ runs:
         # workflow's; the report refuses to publish under any other identity rather than posting one
         # the organisation does not own.
         PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
-        # Where the comment lands, and with what. `PR_NUMBER` is not a runner default, and writing a
-        # comment needs a token the checks themselves never asked for: they only ever read.
+        # Where the comment lands, and with what. `PR_NUMBER` is not a runner default. The writing
+        # token is a separate input from the reading one because the checks only ever read: it is
+        # the one place a write-scoped token is needed, and it has no reason to be in the hands of
+        # anything that only has to look. Falls back to `github-token`, so a caller that has no
+        # opinion about authorship changes nothing.
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ inputs.comment-token || inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         PRV_TITLE: 'Pull request policy'
         PRV_CHECKS: 'linked-issue|type-label|pr-title-length|pr-title-conventional|pr-body-structure'

@@ -1246,6 +1246,54 @@ print('|'.join(bad))
 ")
   assert_eq 'every check step in every action declares continue-on-error' '' "$coe"
 
+  # Publishing the sticky comment is the only write any of these actions makes, so it is the only one
+  # that should ever be handed a token with the power to write. A manifest that wired the report's
+  # `GH_TOKEN` straight to `github-token` would force a consumer to choose between an organisation
+  # account posting the comment and five check scripts holding that account's token, and the second
+  # is the one nobody would notice choosing.
+  #
+  # `comment-token` falls back to `github-token`, so the fallback keeps a token-less consumer
+  # working; what is forbidden is the report sharing the checks' token unconditionally.
+  tokens=$(PRV_ROOT="$ROOT" python3 -c "
+import os, yaml
+root = os.environ['PRV_ROOT']
+bad = []
+for rel in os.environ['PRV_MANIFESTS'].splitlines():
+    if not rel:
+        continue
+    d = yaml.safe_load(open(os.path.join(root, rel)))
+    name = os.path.dirname(rel)
+    for s in d['runs'].get('steps', []):
+        env = (s.get('env') or {}).get('GH_TOKEN')
+        # Only the report carries PRV_ACTION; a check step's GH_TOKEN is a read token and is fine.
+        if not (s.get('env') or {}).get('PRV_ACTION'):
+            continue
+        if env != '\${{ inputs.comment-token || inputs.github-token }}':
+            bad.append('%s: %s' % (name, env))
+print('|'.join(bad))
+")
+  assert_eq 'the report step publishes with comment-token, falling back to github-token' '' "$tokens"
+
+  # An input nothing reads is a promise the manifest does not keep, and `comment-token` is only
+  # worth declaring if it is optional — a required one would be a breaking change for every consumer
+  # already calling this action with the inputs it had.
+  unpublished=$(PRV_ROOT="$ROOT" python3 -c "
+import os, yaml
+root = os.environ['PRV_ROOT']
+bad = []
+for rel in os.environ['PRV_MANIFESTS'].splitlines():
+    if not rel:
+        continue
+    d = yaml.safe_load(open(os.path.join(root, rel)))
+    spec = (d.get('inputs') or {}).get('comment-token')
+    if not spec:
+        continue
+    if spec.get('required') or spec.get('default') != '':
+        bad.append('%s: required=%r default=%r' % (os.path.dirname(rel), spec.get('required'), spec.get('default')))
+print('|'.join(bad))
+")
+  assert_eq 'comment-token is declared optional with an empty default, so it costs no consumer anything' '' "$unpublished"
+
   # Every script a step invokes must exist, or the step fails on a missing file at run time. This
   # covers an action reaching into ../lib, the one filesystem assumption nothing else exercises.
   #

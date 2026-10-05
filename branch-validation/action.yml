@@ -26,11 +26,15 @@ inputs:
     required: false
     default: 'false'
   comment-author:
-    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; pass a token for this login in `github-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
+    description: 'Login that must own the status comment, compared case-insensitively against the token''s own account. A comment is authored by whoever holds the token that writes it, so the workflow''s own token would post as `github-actions[bot]`; give the report a token for this login in `comment-token` so the comment belongs to the organisation. Nothing is published under a different identity.'
     required: false
     default: 'AiluraKitty'
+  comment-token:
+    description: 'Token the status comment is published with. Defaults to `github-token`. This action reads nothing itself, so `comment-token` is the only token that has to be able to write.'
+    required: false
+    default: ''
   github-token:
-    description: Token used for every API call. Defaults to the workflow's own token.
+    description: Token used for every API call the checks make. Defaults to the workflow's own token.
     required: false
     default: ${{ github.token }}
 
@@ -72,7 +76,9 @@ runs:
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
         PRV_COMMENT_AUTHOR: ${{ inputs.comment-author }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ inputs.github-token }}
+        # The comment is the only thing here that writes, so it is the only thing that gets a token
+        # with any business writing. Falls back to `github-token` when nobody named one.
+        GH_TOKEN: ${{ inputs.comment-token || inputs.github-token }}
         GH_REPO: ${{ github.repository }}
         # Titles the one action that ran.
         PRV_TITLE: 'Branch validation'

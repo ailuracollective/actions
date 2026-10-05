@@ -21,10 +21,12 @@ jobs:
     name: Branch name
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # `permissions: {}` would be right for the check alone: it reads nothing from the API, which is
-    # why its status comment is off by default. It is turned on here for the one thing layer 3 can
-    # test and the offline suite can only fake — two actions, two comments, on one real pull request,
-    # each updating only the one its own marker names. Fork pull requests never reach either job.
+    # `permissions: {}` is right for the check itself: it reads nothing from the API. What needs a
+    # grant is the status comment, and it does not get one here — the comment is published with the
+    # organisation's own token below, which carries its own scopes, so this job grants nothing and
+    # the comment still lands. It is turned on for the one thing layer 3 can test and the offline
+    # suite can only fake — two actions, two comments, on one real pull request, each updating only
+    # the one its own marker names. Fork pull requests never reach either job.
     permissions: {}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -36,19 +38,22 @@ jobs:
           enable-status-comment: true
           # A comment is authored by the owner of the token that writes it, and the workflow's own
           # token writes as `github-actions[bot]`. This account's PAT is what makes the status
-          # comment belong to the organisation rather than to the runner. The job grants nothing,
-          # because the PAT carries its own scopes.
-          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          # comment belong to the organisation rather than to the runner, and `comment-token` is
+          # where it goes so that the check above, which only reads, never holds it.
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           comment-author: AiluraKitty
 
   pr-policy:
     name: Pull request policy
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # `contents: read` is what lets the body-structure check read the template off the base branch.
-    # The status comment is deliberately NOT in this block: it is written with the PAT below, whose
-    # own scopes carry it, so the job grants the checks read-only and nothing more.
+    # `contents: read` is what lets the body-structure check read the template off the base branch, and
+    # `pull-requests: read` is what lets the linked-issue check read a referenced issue's labels.
+    # `pull-requests: write` is deliberately absent: the status comment is written with the token
+    # below, whose own scopes carry it, so the five checks here hold nothing that can change the
+    # pull request they are judging.
     permissions:
+      pull-requests: read
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -72,10 +77,12 @@ jobs:
           title-min: 15
           title-max: 72
           linked-issue-sources: github
-          # The status comment is authored by whoever holds the writing token, so the action is given
-          # the organisation's own account rather than the workflow token. Same reason as the branch
-          # job: a comment nobody in the organisation owns is a comment nobody can edit later.
-          github-token: ${{ secrets.AILURA_KITTY_TOKEN }}
+          # The status comment is authored by whoever holds the writing token, so the report is given
+          # the organisation's own account rather than the workflow token. `comment-token` rather
+          # than `github-token` on purpose: `github.token` is enough to read what the checks read,
+          # and a personal access token that can post as a person should not be the token five check
+          # scripts hold while they judge a stranger's pull request.
+          comment-token: ${{ secrets.AILURA_KITTY_TOKEN }}
           comment-author: AiluraKitty
           # `status/ready`, with the slash: the status family uses slash names and the remote
           # carries `status/ready`. `status:approved` was never created on any remote in this
