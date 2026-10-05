@@ -68,7 +68,6 @@ runs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
         RUNNER_TEMP: ${{ runner.temp }}
-        GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
         # Untrusted-to-this-action inputs are read quoted, never spliced into the script.
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         EVENT_SHA: ${{ github.sha }}

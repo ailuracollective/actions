@@ -173,7 +173,6 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
-        GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         # The sticky comment this action owns. One key per action, and the only thing that tells the
         # PR policy's comment from the branch validation comment: each action updates its own and

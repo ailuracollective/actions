@@ -820,6 +820,30 @@ code=$?
 assert_eq 'a report with no check list exits non-zero' 1 "$code"
 assert_contains 'and blames the action, not the pull request' 'Nothing about the pull request is at fault' "$out"
 
+# An unwritable job summary is a silent failure of the one thing this action guarantees, so it says
+# so and names the cause. This ran as a `[ -n … ] &&` guard for the life of the repository and wrote
+# no summary on any real run, because the manifests blanked the variable.
+setup; export HEAD_REF='janedoe/feat/parser-fallback' AUTHOR_LOGIN='JaneDoe'; run_check branch-name >/dev/null
+out=$(env RESULTS_DIR="$RESULTS_DIR" GITHUB_STEP_SUMMARY='' \
+  PRV_CHECKS="$BRV_CHECK_LIST" PRV_LABELS="$BRV_LABEL_LIST" PRV_TITLE='Branch validation' \
+  bash "$ROOT/lib/report.sh" 2>&1)
+code=$?
+assert_eq 'a report with no summary path still renders' 0 "$code"
+assert_contains 'it warns rather than dropping the summary quietly' 'No job summary was written' "$out"
+assert_contains 'and names the mistake that causes it' 'GITHUB_STEP_SUMMARY' "$out"
+assert_contains 'pointing at the manifest line to delete' 'remove any' "$out"
+assert_contains 'while the table still reaches the step log' '| ✅ | Branch name |' "$out"
+
+# A path that exists but cannot be appended to is the other half: the write fails, so the report
+# must not have called itself done.
+setup; export HEAD_REF='janedoe/feat/parser-fallback' AUTHOR_LOGIN='JaneDoe'; run_check branch-name >/dev/null
+out=$(env RESULTS_DIR="$RESULTS_DIR" GITHUB_STEP_SUMMARY="$RUNNER_TEMP/no-such-dir/summary.md" \
+  PRV_CHECKS="$BRV_CHECK_LIST" PRV_LABELS="$BRV_LABEL_LIST" PRV_TITLE='Branch validation' \
+  bash "$ROOT/lib/report.sh" 2>&1)
+code=$?
+assert_eq 'a report with an unwritable summary path still renders' 0 "$code"
+assert_contains 'it warns that the summary could not be written' 'could not be written' "$out"
+
 # Parallel lists that do not line up would silently mislabel every row.
 setup; run_check branch-name >/dev/null
 out=$(report_for 'branch-name|type-label' 'Branch name')
@@ -1293,6 +1317,47 @@ for rel in os.environ['PRV_MANIFESTS'].splitlines():
 print('|'.join(bad))
 ")
   assert_eq 'comment-token is declared optional with an empty default, so it costs no consumer anything' '' "$unpublished"
+
+  # A runner default belongs to the runner, and re-declaring one that a script reads from the
+  # environment breaks the script rather than documenting anything. `GITHUB_STEP_SUMMARY` is the
+  # case that cost this repository its job summary: all three report steps declared
+  # `GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}`, the `env` context holds only the
+  # workflow's own variables rather than the runner's defaults, so the expression resolved to an
+  # empty string and replaced the path GitHub had set. The table reached the log and no job summary
+  # anywhere, silently, for the life of the repository.
+  #
+  # Scoped to the defaults a step's own script reads from `env`. Re-declaring one to pass it through
+  # a context expression is the defect; a step that genuinely needs to set a different value, like
+  # `GITHUB_EVENT_NAME` on a workflow that triggers on more than one event, is legitimate.
+  # `${{ env.X }}` for a `GITHUB_*` name is the tell: it is the only spelling that cannot resolve.
+  runner_defaults=$(PRV_ROOT="$ROOT" python3 -c "
+import os, re, yaml
+root = os.environ['PRV_ROOT']
+# Documented defaults GitHub sets in every step's environment. GITHUB_STEP_SUMMARY is the one this
+# asserts about by name below; the rest are here so the next instance is caught by this list.
+defaults = ('GITHUB_ACTION', 'GITHUB_ACTION_PATH', 'GITHUB_ACTION_REPOSITORY', 'GITHUB_ACTIONS',
+            'GITHUB_ACTOR', 'GITHUB_API_URL', 'GITHUB_BASE_REF', 'GITHUB_ENV', 'GITHUB_EVENT_NAME',
+            'GITHUB_EVENT_PATH', 'GITHUB_GRAPHQL_URL', 'GITHUB_HEAD_REF', 'GITHUB_JOB',
+            'GITHUB_OUTPUT', 'GITHUB_PATH', 'GITHUB_REF', 'GITHUB_REF_NAME', 'GITHUB_REF_PROTECTED',
+            'GITHUB_REF_TYPE', 'GITHUB_REPOSITORY', 'GITHUB_REPOSITORY_ID', 'GITHUB_REPOSITORY_OWNER',
+            'GITHUB_RETENTION_DAYS', 'GITHUB_RUN_ATTEMPT', 'GITHUB_RUN_ID', 'GITHUB_RUN_NUMBER',
+            'GITHUB_SERVER_URL', 'GITHUB_SHA', 'GITHUB_STEP_SUMMARY', 'GITHUB_TRIGGERING_ACTOR',
+            'GITHUB_WORKFLOW', 'GITHUB_WORKFLOW_REF', 'GITHUB_WORKFLOW_SHA', 'GITHUB_WORKSPACE')
+bad = []
+for rel in os.environ['PRV_MANIFESTS'].splitlines():
+    if not rel:
+        continue
+    d = yaml.safe_load(open(os.path.join(root, rel)))
+    for s in d['runs'].get('steps', []):
+        for name, value in (s.get('env') or {}).items():
+            if name not in defaults:
+                continue
+            # An assignment that reads the same name back out of the env context is the blanking one.
+            if re.search(r'\\\$\{\{\s*env\.%s\s*\}\}' % re.escape(name), str(value)):
+                bad.append('%s/%s: %s' % (os.path.dirname(rel), s.get('name'), name))
+print('|'.join(sorted(bad)))
+")
+  assert_eq 'no step re-declares a runner default by reading it back out of the env context' '' "$runner_defaults"
 
   # Every script a step invokes must exist, or the step fails on a missing file at run time. This
   # covers an action reaching into ../lib, the one filesystem assumption nothing else exercises.

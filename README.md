@@ -522,7 +522,6 @@ selects and what the `PR_NUMBER`/`GH_TOKEN`/`GH_REPO` trio points it at:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
-        GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         PRV_ACTION: 'my-action'
         PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
@@ -542,6 +541,15 @@ only the comment carrying its own key. Omit it and nothing is published — the 
 warning naming the variable, rather than posting a comment no later run could find. `PR_NUMBER` is not
 a runner default, so it has to be passed; `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` are, and are read
 from the runner instead of from the manifest because they cannot be misconfigured.
+
+**Pass `GITHUB_STEP_SUMMARY` never.** GitHub sets it in every step's environment, and a step-level
+`env:` entry replaces that value rather than merging with it. The spelling
+`GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}` looks like a pass-through and is not one: the
+`env` context holds the workflow's own variables, not the runner's defaults, so it resolves to an
+empty string and the step summary is never written. Every report step in this repository carried
+that line from the initial commit, so the table reached the log and no job summary anywhere, with
+nothing reporting the loss. `lib/report.sh` now warns when there is no summary path, and the manifest
+group asserts that no step declares a runner default by reading it back out of the `env` context.
 
 `PRV_COMMENT_AUTHOR` is the login the comment has to belong to, and the report checks the token
 against it before writing anything: a comment is authored by whoever holds the writing token, so an

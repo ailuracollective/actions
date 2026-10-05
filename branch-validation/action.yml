@@ -68,7 +68,6 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
-        GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         # Its own sticky comment, separate from the PR policy's: the marker names this action, so one
         # action never overwrites another's status.

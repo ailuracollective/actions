@@ -45,7 +45,6 @@ runs:
       shell: bash
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
-        GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         # The key this report step owns a sticky comment under, declared like the other two actions'
         # so the three reports are configured identically. It cannot publish here: the comment is
