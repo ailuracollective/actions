@@ -24,7 +24,8 @@ jobs:
     permissions: {}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      # Must match `type-labels` below: a branch type with no matching label could never pass.
+      # Seven, and it is a TITLE vocabulary rather than a label one: a branch segment is the
+      # Conventional Commit type. Same list as `title-types` below.
       - uses: ./branch-validation
         with:
           branch-types: feat,fix,docs,chore,ci,test,refactor
@@ -43,11 +44,25 @@ jobs:
       # not being tested.
       - uses: ./pull-request
         with:
-          type-labels: feat,fix,docs,chore,ci,test,refactor
+          # This repository carries the prefixed `type/*` family, like every other in the
+          # organisation — the bare names the bootstrap workflow creates are a leftover from
+          # before the family was adopted, and none of them exists on the remote. Declaring a
+          # label that does not exist is not a stricter gate, it is an unsatisfiable one: the
+          # check matches by exact, case-folded name, so every pull request was reported as
+          # carrying no type label at all.
+          type-labels: type/feature,type/bug,type/documentation,type/improvement,type/task
+          # Declared separately because it is a different set of a different size: these are the
+          # Conventional Commit types, which is what a title and a branch segment carry. It falls
+          # back to `type-labels` when empty, and inheriting here would make the grammar demand a
+          # literal `type/feature:` subject.
+          title-types: feat,fix,docs,chore,ci,test,refactor
           title-min: 15
           title-max: 72
           linked-issue-sources: github
-          approved-label: status:approved
+          # `status/ready`, with the slash: the status family uses slash names and the remote
+          # carries `status/ready`. `status:approved` was never created on any remote in this
+          # organisation, so the linked-issue gate demanded a label nothing could ever carry.
+          approved-label: status/ready
 
   root-index:
     name: Root index refuses adoption
@@ -99,4 +114,4 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./triage
         with:
-          auto-label-name: status:needs-review
+          auto-label-name: status/needs-review

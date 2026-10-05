@@ -15,11 +15,13 @@ prv_gate 'pull_request' || exit 0
 # is the inverse of prv_gate's `|| exit 0`: the helper returns 0 when the author IS exempt.
 prv_actor_exempt "$AUTHOR_LOGIN" "$INPUT_SKIP_ACTORS" && exit 0
 
-cleaned=$(prv_csv_lines "$INPUT_TYPE_LABELS")
-# One derivation feeds the accept regex, the diagnosis messages and the template lookup, so the set
-# cannot drift between them.
+# The type vocabulary, not the label vocabulary: a title follows Conventional Commits, and the twelve
+# types release tooling parses are not the five labels a repository creates. `prv_title_types` falls
+# back to `type-labels` for a consumer that declares only one set.
+cleaned=$(prv_csv_lines "$(prv_title_types)")
+# One derivation feeds the accept regex and the diagnosis messages, so the two cannot drift.
 types=$(printf '%s\n' "$cleaned" | paste -sd'|' -)
-human=$(prv_human_list "$INPUT_TYPE_LABELS")
+human=$(prv_human_list "$(prv_title_types)")
 count_types=$(printf '%s\n' "$cleaned" | wc -l)
 
 title_regex="^(${types})(\([a-z0-9][a-z0-9._/-]*\))?!?:[[:space:]]*[^[:space:]].*$"

@@ -120,14 +120,54 @@ prv_human_list() {
 }
 
 # prv_matched_type_labels — the pull request's labels that are in the configured type set, original
-# casing, one per line. Matching is case-insensitive because GitHub label names are not. Shared by
-# `type-label` and `pr-body-structure`, which must agree on which label the PR carries.
+# casing, one per line. Matching is case-insensitive because GitHub label names are not. Read by
+# `type-label` alone now: `pr-body-structure` resolves its template from the title's type instead, so
+# the two vocabularies stay independent.
 prv_matched_type_labels() {
   local allowed
   allowed=$(prv_allowed_labels "$INPUT_TYPE_LABELS")
   # Untrusted labels: one JSON array in, filtered by jq, never interpolated into this script.
   printf '%s' "$PR_LABELS" | jq -r --argjson allowed "$allowed" \
     '.[] | select((.name | ascii_downcase) as $n | $allowed | index($n)) | .name'
+}
+
+# prv_title_types — the Conventional Commit vocabulary: `title-types` when the consumer declares a
+# second one, `type-labels` otherwise.
+#
+# The two are different sets on purpose, and one input cannot be both. Labels are what a repository
+# actually creates, so a label set is coarse — a contributor picks the nearest of five. Titles follow
+# Conventional Commits, so a title set is the twelve types, and release tooling parses the squashed
+# subject. A consumer whose labels are `type/feature,type/bug,…` and whose templates are named
+# `feat.md`, `fix.md`, … needs to declare both. Falling back to `type-labels` is what keeps every
+# consumer that declares only one vocabulary behaving exactly as it did before.
+prv_title_types() {
+  if [ -n "${INPUT_TITLE_TYPES:-}" ]; then
+    printf '%s' "$INPUT_TITLE_TYPES"
+  else
+    printf '%s' "${INPUT_TYPE_LABELS:-}"
+  fi
+}
+
+# prv_title_type <title> — the Conventional Commit type of a subject, lowercased. Returns 1 when the
+# title has no readable type.
+#
+# Deliberately lenient. This is not a grammar check: it reads the type out of a title so the caller
+# can resolve a template, and a title it cannot read belongs to pr-title-conventional, which owns the
+# grammar. Diagnosing it here as well would fail a pull request twice for one mistake.
+prv_title_type() {
+  local lower head
+  lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  case $lower in
+    *:*) ;;
+    *) return 1 ;;
+  esac
+  head=${lower%%:*}
+  head=${head%!}
+  case $head in
+    *'('*) head=${head%%(*} ;;
+  esac
+  [ -n "$head" ] || return 1
+  printf '%s\n' "$head"
 }
 
 # prv_valid_linear_identifier <value> — true for a Linear `TEAMKEY-N` identifier.

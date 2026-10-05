@@ -24,18 +24,24 @@ jobs:
           create() { gh label create "$1" --color "$2" --description "$3" --force; }
 
           # Must match what self-validation.yml passes to both the branch check and the policy.
-          create feat      0e8a16 'A new capability.'
-          create fix       d73a4a 'A correction of existing behaviour.'
-          create docs      0075ca 'Documentation only.'
-          create chore     c2e0c6 'Housekeeping with no behaviour change.'
-          create ci        5319e7 'Workflow and runner configuration.'
-          create test      fbca04 'Tests and the offline suite.'
-          create refactor  cfd3d7 'Behaviour-preserving restructuring.'
+          # Must match what self-validation.yml passes as `type-labels`: a label the gate
+          # demands but the repository does not carry is an unsatisfiable gate, not a strict
+          # one. The prefixed family is what every repository in this organisation actually
+          # has, so the bare names this workflow used to create are what had to change.
+          #
+          # `type/task` is the catch-all and takes the types with no label of their own: `chore`,
+          # `ci` and `test` are Conventional Commit types, not label names.
+          create type/feature       0075ca 'A new capability.'
+          create type/bug           d73a4a 'A correction of existing behaviour.'
+          create type/documentation 0075ca 'Documentation only.'
+          create type/improvement   a2eeef 'An improvement to existing functionality.'
+          create type/task          7057ff 'Work that is not a behaviour change of its own: chores, CI and tests.'
 
           # Applied by a maintainer, never derived: approval is a human judgement, and the
-          # linked-issue gate is only as strong as that judgement.
-          create status:approved     006b2d 'A maintainer has agreed this issue is worth doing. Required on any linked issue.'
-          create status:needs-review d93f0b 'Opened and not yet triaged. Applied automatically by the triage action.'
+          # linked-issue gate is only as strong as that judgement. Slash forms, matching the
+          # status family every remote in this organisation carries.
+          create status/ready         0e8a16 'A maintainer has agreed this issue is worth doing. Required on any linked issue.'
+          create status/needs-review  5319e7 'Opened and not yet triaged. Applied automatically by the triage action.'
 
       - name: Show the resulting set
         env:

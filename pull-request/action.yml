@@ -36,9 +36,13 @@ inputs:
     required: false
     default: '72'
   type-labels:
-    description: Comma-separated type labels, used for the label check, the Conventional Commit subject grammar and template resolution.
+    description: Comma-separated labels a pull request must carry exactly one of. Read only by the label check, so these must be label names the repository actually has.
     required: false
     default: 'feat,fix,docs,refactor,chore,style,perf,test,build,ci,revert,breaking-change'
+  title-types:
+    description: 'Comma-separated Conventional Commit types allowed in the PR title and used to resolve its template. Leave empty when the label vocabulary and the title vocabulary are the same, which is the default. Set it when they differ — for example `type-labels: type/feature,type/bug,…` with `title-types: feat,fix,…` — because the two sets have different sizes and cannot be one input.'
+    required: false
+    default: ''
   template-dir:
     description: Directory holding the per-type PR templates.
     required: false
@@ -127,6 +131,7 @@ runs:
         INPUT_SKIP_ACTORS: ${{ inputs.skip-actors }}
         AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         INPUT_TYPE_LABELS: ${{ inputs.type-labels }}
+        INPUT_TITLE_TYPES: ${{ inputs.title-types }}
         PR_TITLE: ${{ github.event.pull_request.title }}
       run: bash ${{ github.action_path }}/pr-title-conventional.sh
 
@@ -144,8 +149,9 @@ runs:
         # and a job holding a token must not put untrusted fork code on the runner.
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_BODY: ${{ github.event.pull_request.body }}
-        PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
         INPUT_TYPE_LABELS: ${{ inputs.type-labels }}
+        INPUT_TITLE_TYPES: ${{ inputs.title-types }}
         INPUT_TEMPLATE_DIR: ${{ inputs.template-dir }}
         INPUT_DEFAULT_TEMPLATE: ${{ inputs.default-template }}
       run: bash ${{ github.action_path }}/pr-body-structure.sh

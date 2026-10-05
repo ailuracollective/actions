@@ -116,8 +116,8 @@ jobs:
 | `linked-issue` | A `Closes`/`Fixes`/`Resolves` pointing at an issue carrying the approved label, in GitHub or Linear | `enable-linked-issue` |
 | `type-label` | Exactly one label from `type-labels` | `enable-type-label` |
 | `pr-title-length` | `title-min`–`title-max` characters, counted as characters | `enable-title-length` |
-| `pr-title-conventional` | `<type>(<scope>)!: <description>`, case-insensitive | `enable-title-conventional` |
-| `pr-body-structure` | Every `## ` heading declared by the type's template | `enable-body-structure` |
+| `pr-title-conventional` | `<type>(<scope>)!: <description>`, case-insensitive, with `<type>` from `title-types` | `enable-title-conventional` |
+| `pr-body-structure` | Every `## ` heading declared by the title type's template | `enable-body-structure` |
 
 Every failure names the check, what is wrong, and the exact fix.
 
@@ -131,11 +131,36 @@ every defect in one run and fixes them in one push instead of discovering one pe
 
 **The job summary is a table.** Each run writes all five verdicts to the workflow run's job summary.
 
-**`skipped` is reported as skipped.** `pr-body-structure` cannot resolve a template when the pull
-request carries zero or several type labels. It reports `skipped` and names `type-label` as the
-owner, rather than a green tick for a validation that never happened. The closing line of the summary
-reads `All N checks passed (M skipped, not run for this pull request)`: a skip is counted as a
+**`skipped` is reported as skipped.** `pr-body-structure` cannot resolve a template when the title
+names no allowed type. It reports `skipped` and names `pr-title-conventional` as the owner, rather
+than a green tick for a validation that never happened. The closing line of the summary reads
+`All N checks passed (M skipped, not run for this pull request)`: a skip is counted as a
 non-failure, so a required status is still satisfied, but it is never folded into the passed count.
+
+### Two vocabularies, two inputs
+
+Labels and titles are different sets, and one input cannot be both:
+
+| | Vocabulary | Size | Read by |
+| --- | --- | --- | --- |
+| `type-labels` | What the repository actually creates. A contributor picks the nearest of a coarse family. | 5 in this organisation | `type-label` |
+| `title-types` | Conventional Commits, which release tooling parses out of the squashed subject. | 12 | `pr-title-conventional`, `pr-body-structure` |
+
+`title-types` defaults to `type-labels`, so a consumer that uses one vocabulary for both declares
+nothing extra. Declare the second input only when they differ:
+
+```yaml
+      - uses: ailuracollective/actions/pull-request@v1
+        with:
+          type-labels: type/feature,type/bug,type/documentation,type/improvement,type/task
+          title-types: feat,fix,docs,chore,style,refactor,perf,test,build,ci,revert,breaking-change
+```
+
+With that set, a pull request titled `fix: …` and labelled `type/bug` passes both checks and is
+measured against `.github/PULL_REQUEST_TEMPLATE/fix.md`. Before `title-types` existed the two checks
+could not both be satisfied: a label set of `type/bug` left the title grammar demanding a literal
+`type/bug:` subject, and a label set of `fix` left the label check unsatisfiable on any repository
+that does not carry a label named `fix`.
 
 ### Linked issues, in GitHub or Linear
 
@@ -167,16 +192,19 @@ carry it, and a maintainer applies it during triage.
 
 ### Template resolution
 
-A type label resolves to a template by one rule, with no lookup table to maintain:
+The **title's type** resolves to a template by one rule, with no lookup table to maintain:
 
 1. `<template-dir>/<type>.md`, if it exists
 2. otherwise `default-template`
 
-Adding a template file is all it takes to give a type its own required sections. Type labels are
-validated as path segments before being joined into a path, so a misconfigured `type-labels` input is
-reported as a workflow defect rather than escaping the template directory. The template is read from
-the **base** branch through the contents API, and the action never runs `actions/checkout`: a job
-holding a token must not put untrusted fork code on the runner.
+Adding a template file is all it takes to give a type its own required sections. The type is read from
+the title rather than from a label, which is what lets the two vocabularies differ and what keeps this
+check independent of `type-label`: when a title's type is not allowed, that is the grammar check's
+failure, and when a type cannot be used as a file name that is a workflow defect reported as one. Types
+are validated as path segments before being joined into a path, so a misconfigured `title-types` input
+is reported rather than escaping the template directory. The template is read from the **base** branch
+through the contents API, and the action never runs `actions/checkout`: a job holding a token must not
+put untrusted fork code on the runner.
 
 ### Exempt actors
 

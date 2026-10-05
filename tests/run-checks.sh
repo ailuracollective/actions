@@ -56,6 +56,7 @@ setup() {
   export GH_REPO=owner/repo GH_TOKEN=stub-token
   export INPUT_TITLE_MIN=15 INPUT_TITLE_MAX=72
   export INPUT_TYPE_LABELS='feat,fix,docs,refactor,chore,style,perf,test,build,ci,revert,breaking-change'
+  export INPUT_TITLE_TYPES=''
   export INPUT_BRANCH_TYPES='feat,fix,chore,docs,style,refactor,perf,test,build,ci,revert'
   export INPUT_TEMPLATE_DIR='.github/PULL_REQUEST_TEMPLATE'
   export INPUT_DEFAULT_TEMPLATE='.github/PULL_REQUEST_TEMPLATE.md'
@@ -385,39 +386,40 @@ assert_eq 'rejects a type with no description' fail "$(status_of pr-title-conven
 # ===============================================================================================
 group 'pr-body-structure'
 # ===============================================================================================
-setup; export PR_LABELS='[{"name":"feat"}]'
+# Every case sets PR_TITLE, because the template is resolved from the title's type, not from a label.
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 export PR_BODY=$'## Summary\n\nSomething.\n\n## Testing\n\nRan the suite.'
 run_check pr-body-structure >/dev/null
 assert_eq 'accepts a body carrying every declared section' pass "$(status_of pr-body-structure)"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 export PR_BODY=$'## Summary\n\nSomething.'
 out=$(run_check pr-body-structure)
 assert_eq 'rejects a body missing a declared section' fail "$(status_of pr-body-structure)"
 assert_contains 'names the missing section' 'testing' "$out"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 export PR_BODY='Just a flat description with no headings.'
 run_check pr-body-structure >/dev/null
 assert_eq 'rejects a body with no headings at all' fail "$(status_of pr-body-structure)"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 export PR_BODY=$'## Summary\n\n## Testing'
 run_check pr-body-structure >/dev/null
 assert_eq 'compares headings case-insensitively and ignoring blanks' pass "$(status_of pr-body-structure)"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 export PR_BODY=$'## Summary\n\n## Testing\n\n## Changelog'
 run_check pr-body-structure >/dev/null
 assert_eq 'ignores sections the template does not declare' pass "$(status_of pr-body-structure)"
 
 # Dedicated template wins; this is the rule that lets a new type need no registration anywhere.
-setup; export PR_LABELS='[{"name":"fix"}]'
+setup; export PR_TITLE='fix: correct the accents'
 stub_repo fix 'fix.md' '## Root cause
 
 ## Fix'
@@ -426,51 +428,102 @@ export PR_BODY=$'## Root cause\n\n## Fix'
 run_check pr-body-structure >/dev/null
 assert_eq 'prefers the dedicated template over the default' pass "$(status_of pr-body-structure)"
 
-setup; export PR_LABELS='[{"name":"chore"}]'
+setup; export PR_TITLE='style: reindent the block'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 printf '%s\n' "$DEFAULT_TEMPLATE_BODY" > "$GH_STUB_REPO_ROOT/$INPUT_DEFAULT_TEMPLATE"
 export PR_BODY=$'## Summary\n\n## Testing'
 run_check pr-body-structure >/dev/null
 assert_eq 'falls back to the default template for an unlisted type' pass "$(status_of pr-body-structure)"
 
+# A scoped title names the same type, so it resolves the same template.
+setup; export PR_TITLE='fix(core)!: correct the accents'
+stub_repo fix 'fix.md' '## Root cause
+
+## Fix'
+export PR_BODY=$'## Root cause\n\n## Fix'
+run_check pr-body-structure >/dev/null
+assert_eq 'strips the scope and the breaking marker to find the type' pass "$(status_of pr-body-structure)"
+
+# An upper-case type is matched case-insensitively, and the template is looked up lowercased.
+setup; export PR_TITLE='FEAT: shout at the parser'
+stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
+export PR_BODY=$'## Summary\n\n## Testing'
+run_check pr-body-structure >/dev/null
+assert_eq 'resolves the template from an upper-case type' pass "$(status_of pr-body-structure)"
+
 # Counts what is MISSING. It used to count what the template DECLARES.
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$(printf '## Alpha\n\n## Beta\n\n## Gamma')"
 export PR_BODY=$'## Alpha\n\n## Gamma'
 run_check pr-body-structure >/dev/null
 assert_contains 'counts the sections missing, not the sections declared' \
   'The body is missing 1 required section of 3' "$(cat "$RESULTS_DIR"/*)"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' 'no headings at all here'
 out=$(run_check pr-body-structure)
 assert_eq 'reports a template declaring no sections as a config defect' fail "$(status_of pr-body-structure)"
 assert_contains 'blames the configuration, not the pull request' 'Nothing about this pull request is at fault' "$out"
 
-setup; export PR_LABELS='[{"name":"feat"}]'
+setup; export PR_TITLE='feat: add the counter'
 stub_repo feat 'feat.md' "$DEFAULT_TEMPLATE_BODY"
 GH_STUB_REPO_ROOT=$(mktemp -d); export GH_STUB_REPO_ROOT   # the template is simply absent now
 out=$(run_check pr-body-structure)
 assert_eq 'reports a missing template as a config defect' fail "$(status_of pr-body-structure)"
 assert_contains 'names the missing template' 'type template not found' "$out"
 
-# The pull request carries no type label, so there is no template to resolve. `type-label` owns that
-# failure; reporting a pass here would claim a validation that never happened.
-setup; export PR_LABELS='[]'
+# The template no longer depends on the labels, so a title the grammar check rejects is the only
+# reason to skip. `pr-title-conventional` owns that failure; a pass here would claim a validation
+# that never happened.
+setup; export PR_TITLE='nope: add the counter'
 run_check pr-body-structure >/dev/null
-assert_eq 'skips, rather than passes, when no type label resolves a template' skip "$(status_of pr-body-structure)"
-assert_contains 'says which check owns the failure' 'type-label' "$(cat "$RESULTS_DIR/pr-body-structure.msg")"
+assert_eq 'skips, rather than passes, when the title names no allowed type' skip "$(status_of pr-body-structure)"
+assert_contains 'says which check owns the failure' 'title-convention' "$(cat "$RESULTS_DIR/pr-body-structure.msg")"
 
-setup; export PR_LABELS='[{"name":"feat"},{"name":"fix"}]'
+setup; export PR_TITLE='no colon here'
 run_check pr-body-structure >/dev/null
-assert_eq 'skips when several type labels make the template undetermined' skip "$(status_of pr-body-structure)"
+assert_eq 'skips when the title carries no type at all' skip "$(status_of pr-body-structure)"
 
-# A configured type label becomes a URL path segment. Without the guard, `../` in `type-labels`
-# would let a misconfigured input read any path in the consuming repository.
-setup; export INPUT_TYPE_LABELS='feat,../../etc/passwd'
-export PR_LABELS='[{"name":"../../etc/passwd"}]'
+# The whole reason `title-types` exists: the labels name a coarse family and the templates are named
+# for the twelve Conventional Commit types. Both checks read their own set and both pass.
+setup; export INPUT_TYPE_LABELS='type/feature,type/bug,type/task'
+export INPUT_TITLE_TYPES='feat,fix,chore,docs,style,refactor,perf,test,build,ci,revert,breaking-change'
+export PR_TITLE='fix: correct the accents'
+export PR_LABELS='[{"name":"type/bug"}]'
+stub_repo fix 'fix.md' '## Root cause
+
+## Fix'
+export PR_BODY=$'## Root cause\n\n## Fix'
+run_check pr-body-structure >/dev/null
+assert_eq 'resolves a bare template name from a prefixed type label' pass "$(status_of pr-body-structure)"
+run_check type-label >/dev/null
+assert_eq 'and the label check accepts the prefixed label' pass "$(status_of type-label)"
+
+setup; export INPUT_TYPE_LABELS='type/feature,type/bug,type/task'
+export INPUT_TITLE_TYPES='feat,fix,chore,docs,style,refactor,perf,test,build,ci,revert,breaking-change'
+export PR_TITLE='fix: correct the accents'
+export PR_LABELS='[{"name":"fix"}]'
+out=$(run_check type-label)
+assert_eq 'and a bare label is reported as no type label' fail "$(status_of type-label)"
+assert_contains 'names the prefixed family it wants instead' 'type/bug' "$out"
+
+# Falling back to `type-labels` is what keeps a consumer with one vocabulary working unchanged.
+setup; export INPUT_TYPE_LABELS='feat,fix,docs'
+unset INPUT_TITLE_TYPES
+export PR_TITLE='docs: explain the parser'
+stub_repo docs 'docs.md' '## Why
+
+## What changed'
+export PR_BODY=$'## Why\n\n## What changed'
+run_check pr-body-structure >/dev/null
+assert_eq 'falls back to type-labels when title-types is empty' pass "$(status_of pr-body-structure)"
+
+# A configured type becomes a URL path segment. Without the guard, `../` in `title-types` would let a
+# misconfigured input read any path in the consuming repository.
+setup; export INPUT_TITLE_TYPES='feat,../../etc/passwd'
+export PR_TITLE='../../etc/passwd: x'
 out=$(run_check pr-body-structure)
-assert_eq 'rejects a type label that could escape the template directory' fail "$(status_of pr-body-structure)"
+assert_eq 'rejects a type that could escape the template directory' fail "$(status_of pr-body-structure)"
 assert_contains 'blames the configuration, not the pull request' 'Nothing about this pull request is at fault' "$out"
 
 setup; export GITHUB_EVENT_NAME=issues

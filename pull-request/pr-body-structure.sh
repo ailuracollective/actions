@@ -14,18 +14,26 @@ prv_gate 'pull_request' || exit 0
 # is the inverse of prv_gate's `|| exit 0`: the helper returns 0 when the author IS exempt.
 prv_actor_exempt "$AUTHOR_LOGIN" "$INPUT_SKIP_ACTORS" && exit 0
 
-matched=$(prv_matched_type_labels)
-count=$(printf '%s' "$matched" | grep -c . || true)
+# The type comes from the TITLE, not from a label. That is what lets the label vocabulary and the
+# title vocabulary differ: labels are a coarse family a repository creates, titles follow
+# Conventional Commits, and the template directory is named for the twelve title types. It also makes
+# this check independent of `type-label` — each owns its own failure, so a pull request missing both a
+# label and a section is told about both instead of one hiding the other.
+type=$(prv_title_type "$PR_TITLE" || true)
 
-# Zero or several type labels is `type-label`'s failure, not this one's. Inside a single job there is
-# no sibling job to defer to, so this is reported as skipped rather than as a pass it never earned.
-if [ "$count" -eq 0 ] || [ "$count" -gt 1 ]; then
-  prv_note "This pull request carries $count type labels, so the template it should have used is undetermined. Skipping the body-section check; the type-label check owns this failure."
-  prv_record skip "The pull request carries $count type labels, so its template is undetermined. The type-label check owns this failure."
+types=$(prv_csv_lines "$(prv_title_types)")
+count_types=$(printf '%s\n' "$types" | wc -l | tr -d ' ')
+human=$(prv_human_list "$(prv_title_types)")
+
+# A title whose type is unreadable or outside the allowed set is pr-title-conventional's failure, not
+# this one's. Inside a single job there is no sibling job to defer to, so this is reported as skipped
+# rather than as a pass it never earned.
+if [ -z "$type" ] || ! printf '%s\n' "$types" | grep -qxF "$type"; then
+  subject=$(printf '%s' "$PR_TITLE" | tr '\n' ' ')
+  prv_note "The pull request title '$subject' does not carry one of the $count_types allowed types ($human), so no template can be chosen for it. Skipping the body-section check; the title-convention check owns this failure."
+  prv_record skip "The title carries no allowed type, so its template is undetermined. The title-convention check owns this failure."
   exit 0
 fi
-
-type=$(printf '%s' "$matched" | tr '[:upper:]' '[:lower:]')
 
 runner_tmp=${RUNNER_TEMP:-/tmp}
 template_file="$runner_tmp/pr-template.md"
@@ -41,9 +49,9 @@ prv_template_resolve "$type" "$INPUT_TEMPLATE_DIR" "$INPUT_DEFAULT_TEMPLATE" \
   "$GH_REPO" "$BASE_SHA" "$template_file" || code=$?
 
 if [ "$code" -eq 2 ]; then
-  prv_error 'Workflow misconfiguration: unsupported type label' \
-    "The type label '$type' is in the allowed set but cannot be used as a template name. Nothing about this pull request is at fault. Fix: drop path characters from the 'type-labels' input, or use only letters, digits, dots, hyphens and underscores."
-  prv_record fail "The configured type label '$type' cannot be used as a template name."
+  prv_error 'Workflow misconfiguration: unsupported type' \
+    "The title type '$type' is in the allowed set but cannot be used as a template name. Nothing about this pull request is at fault. Fix: drop path characters from the 'title-types' input, or use only letters, digits, dots, hyphens and underscores."
+  prv_record fail "The allowed type '$type' cannot be used as a template name."
   exit 0
 fi
 
@@ -110,5 +118,5 @@ if [ "$missing" -ne 0 ]; then
   exit 0
 fi
 
-prv_note "PR body carries every section required by $template (type label: $type, template source: $source_kind)."
+prv_note "PR body carries every section required by $template (title type: $type, template source: $source_kind)."
 prv_record pass "The body carries every section required by $template (type source: $source_kind)."
