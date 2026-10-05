@@ -29,7 +29,7 @@ jobs:
     # the one its own marker names. Fork pull requests never reach either job.
     permissions: {}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       # Seven, and it is a TITLE vocabulary rather than a label one: a branch segment is the
       # Conventional Commit type. Same list as `title-types` below.
       - uses: ./branch-validation
@@ -56,7 +56,7 @@ jobs:
       pull-requests: read
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       # All five at their defaults. A disabled check cannot fail, and a check that never fails is
       # not being tested. This repository's own status comment is written by Ailura Kitty, so the
       # run that gates every change here is the same code path a consumer gets.
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       # `continue-on-error`: the index is meant to fail, so the job asserts the failure instead of
       # dying on it. No permissions are needed because the index reads nothing and calls no API.
       - id: index
@@ -136,7 +136,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: ./triage
         with:
           auto-label-name: status/needs-review
