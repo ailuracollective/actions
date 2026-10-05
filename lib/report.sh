@@ -7,11 +7,14 @@
 #   PRV_LABELS   pipe-separated human labels, positionally parallel to PRV_CHECKS
 #   PRV_TITLE    heading for the summary table
 #   PRV_NOTE     optional advisory appended under the table
+#   PRV_ACTION   optional key owning this action's sticky pull request comment, read by lib/comment.sh
 # A check that recorded nothing is reported as `error`, never as a pass: an unexpected crash must not
 # read as a clean run.
 set -euo pipefail
 # shellcheck source=lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+# shellcheck source=lib/comment.sh
+source "$(dirname "${BASH_SOURCE[0]}")/comment.sh"
 
 checks_string=${PRV_CHECKS:-}
 labels_string=${PRV_LABELS:-}
@@ -104,6 +107,12 @@ fi
 
 printf '%s' "$summary"
 [ -n "${GITHUB_STEP_SUMMARY:-}" ] && printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+# The same rendering, published to the pull request conversation, so the status is where the author is
+# already looking. It cannot change the verdict, which is why it runs after the summary and why its
+# own failures are warnings: the job summary above is the reporting this action guarantees, and a
+# comment is an addition to it.
+prv_publish_status_comment "$summary" || true
 
 if [ "$failures" -eq 0 ]; then
   exit 0

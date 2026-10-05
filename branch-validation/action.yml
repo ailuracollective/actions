@@ -6,6 +6,11 @@ author: 'ailuracollective'
 # One check, deliberately: the other contribution-policy checks are separate actions, because a
 # consumer that only wants branch naming should not have to opt out of five others, and should not
 # need a token at all.
+#
+# The check itself needs no token, and that is the point of separating it out. Publishing its status
+# comment does need one, because a comment is a write, so that comment is off by default here:
+# `enable-status-comment: true` turns it on, and then the calling job needs `pull-requests: write`.
+# The checks behave identically either way.
 
 inputs:
   branch-types:
@@ -16,6 +21,10 @@ inputs:
     description: 'Comma-separated GitHub logins whose pull requests are exempt from this check. Each entry is matched literally, as a whole login, case-insensitively — never as a pattern. An exempt pull request is reported as skipped, not passed.'
     required: false
     default: ''
+  enable-status-comment:
+    description: 'Keep a single comment on the pull request carrying this action''s current status, updated on every run instead of a new comment per run. Needs `pull-requests: write` on the calling job. Off by default, because the check itself needs no token and this action exists so that a consumer who only wants branch naming grants nothing.'
+    required: false
+    default: 'false'
   github-token:
     description: Token used for every API call. Defaults to the workflow's own token.
     required: false
@@ -53,6 +62,13 @@ runs:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
+        # Its own sticky comment, separate from the PR policy's: the marker names this action, so one
+        # action never overwrites another's status.
+        PRV_ACTION: 'branch-validation'
+        PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
         # Titles the one action that ran.
         PRV_TITLE: 'Branch validation'
         PRV_CHECKS: 'branch-name'

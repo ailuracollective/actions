@@ -21,7 +21,12 @@ jobs:
     name: Branch name
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    permissions: {}
+    # `permissions: {}` would be right for the check alone: it reads nothing from the API, which is
+    # why its status comment is off by default. It is turned on here for the one thing layer 3 can
+    # test and the offline suite can only fake — two actions, two comments, on one real pull request,
+    # each updating only the one its own marker names. Fork pull requests never reach either job.
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Seven, and it is a TITLE vocabulary rather than a label one: a branch segment is the
@@ -29,14 +34,17 @@ jobs:
       - uses: ./branch-validation
         with:
           branch-types: feat,fix,docs,chore,ci,test,refactor
+          enable-status-comment: true
 
   pr-policy:
     name: Pull request policy
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # `contents: read` is what lets the body-structure check read the template off the base branch.
+    # `contents: read` is what lets the body-structure check read the template off the base branch,
+    # and `pull-requests: write` is the status comment — a write the checks themselves never need,
+    # which is why this job's own comment is posted by the action rather than by the workflow.
     permissions:
-      pull-requests: read
+      pull-requests: write
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

@@ -13,6 +13,7 @@ let rawInput = false;
 let slurp = false;
 let stringOutput = false;
 let argjson = {};
+let arg = {};
 let filter = null;
 let files = [];
 
@@ -23,6 +24,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '-r' || a === '--raw-output') stringOutput = true;
   else if (a === '-n' || a === '--null-input') { /* not used */ }
   else if (a === '--argjson') { argjson[args[++i]] = args[++i]; }
+  else if (a === '--arg') { arg[args[++i]] = args[++i]; }
   else if (a.startsWith('-')) fail(`unsupported option ${a}`);
   else if (filter === null) filter = a;
   else files.push(a);
@@ -47,6 +49,14 @@ const LABEL_FILTER = '.[] | select((.name | ascii_downcase) as $n | $allowed | i
 const LINEAR_ISSUE_FILTER = '.data.issue';
 const LINEAR_LABELS_FILTER = '.data.issue.labels.nodes[].name';
 const IDENTITY = '.';
+const BODY_FILTER = '.body';
+// The sticky status comment lookup. `gh api --paginate` prints one JSON array per page, so `add`
+// flattens every page into a single stream before anything is filtered — otherwise a pull request
+// with more than one page of comments would not find its own status comment and would post a second
+// one. `startswith` rather than `contains`: lib/comment.sh only ever writes the marker as the first
+// line of a body, so a contributor who quotes it mid-comment must not be matched and overwritten.
+// `// ""` covers a comment with no body, which `startswith` cannot be applied to.
+const STICKY_ID_FILTER = 'add[]? | select((.body // "") | startswith($m)) | .id';
 
 function emit(value) {
   // Real jq -r prints objects and arrays as JSON, and only scalars bare. String() would render an
@@ -64,6 +74,29 @@ if (rawInput) {
 }
 
 if (slurp) {
+  if (filter === STICKY_ID_FILTER) {
+    if (typeof arg.m !== 'string') fail('--arg m is missing');
+    const marker = arg.m;
+    // `--paginate` separates pages with a newline, which is the only whitespace real jq needs.
+    const pages = input.trim() === ''
+      ? []
+      : input.trim().split('\n').filter((l) => l !== '').map((l) => JSON.parse(l));
+    // `add` over pages: every page is an array of comment objects. Real jq errors on anything else,
+    // and so does this, rather than quietly returning nothing and letting a caller post a duplicate.
+    const comments = [];
+    for (const page of pages) {
+      if (!Array.isArray(page)) fail('a page is not an array of comments');
+      comments.push(...page);
+    }
+    for (const comment of comments) {
+      if (comment === null || typeof comment !== 'object') fail('a comment is not an object');
+      const body = comment.body === null || comment.body === undefined ? '' : comment.body;
+      if (typeof body !== 'string') fail('a comment body is not a string');
+      // Real jq's `startswith` is a prefix test, and `//` replaces only null and false.
+      if (body.startsWith(marker)) emit(comment.id);
+    }
+    process.exit(0);
+  }
   if (filter !== IDENTITY) fail(`unsupported filter with -s: ${filter}`);
   const values = input.trim() === '' ? [] : input.trim().split('\n').filter((l) => l !== '').map((l) => JSON.parse(l));
   emit(values);
@@ -72,6 +105,12 @@ if (slurp) {
 
 if (filter === IDENTITY) {
   emit(JSON.parse(input));
+  process.exit(0);
+}
+
+if (filter === BODY_FILTER) {
+  const comment = JSON.parse(input);
+  emit(comment === null || comment === undefined ? null : comment.body);
   process.exit(0);
 }
 

@@ -43,6 +43,14 @@ runs:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         GITHUB_EVENT_NAME: ${{ github.event_name }}
+        # The key this report step owns a sticky comment under, declared like the other two actions'
+        # so the three reports are configured identically. It cannot publish here: the comment is
+        # written on a `pull_request` event only, and this action runs on `issues`, where there is no
+        # pull request conversation to comment in.
+        PRV_ACTION: 'triage'
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
         PRV_TITLE: 'Issue triage'
         PRV_CHECKS: 'auto-label'
         PRV_LABELS: 'Auto-label issue'

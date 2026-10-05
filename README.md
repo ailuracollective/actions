@@ -17,10 +17,11 @@ listed under, and adopting it by mistake fails on purpose: a consumer who writes
 `ailuracollective/actions@v1` gets a failed run naming all four paths above.
 
 They are separate because they answer different questions and need different permissions. Branch
-naming needs no token at all. The PR policy needs `pull-requests: read` and `contents: read`. Issue
-triage needs `issues: write` — the only one, and the only one that cannot work on a pull request from
-a fork, because a fork event carries no secrets. A consumer that only wants branch naming should not
-have to grant the others.
+naming needs no token at all, which is why its [status comment](#the-status-comment) is off by
+default there. The PR policy needs `contents: read` and `pull-requests: write` — read for the
+checks, write for the status comment. Issue triage needs `issues: write` — the only one, and
+the only one that cannot work on a pull request from a fork, because a fork event carries no secrets.
+A consumer that only wants branch naming should not have to grant the others.
 
 ### One Marketplace listing
 
@@ -81,7 +82,19 @@ jobs:
           branch-types: feat,fix,chore
 ```
 
-`permissions: {}` is correct and worth keeping: this check reads nothing from the API.
+`permissions: {}` is correct and worth keeping: this check reads nothing from the API, and its
+[status comment](#the-status-comment) is **off by default here** for the same reason. Opt in with the
+grant the comment needs:
+
+```yaml
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: ailuracollective/actions/branch-validation@v1
+        with:
+          branch-types: feat,fix,chore
+          enable-status-comment: true
+```
 
 It runs on `opened` only. GitHub cannot rename a branch an open pull request points at, so
 `head.ref` is fixed for the life of the pull request, and re-validating it on every event would spend
@@ -97,9 +110,9 @@ on:
 jobs:
   pr-policy:
     runs-on: ubuntu-latest
-    # One token serves all five checks, so least privilege is a single block.
+    # One token serves all five checks and the status comment, so least privilege is a single block.
     permissions:
-      pull-requests: read
+      pull-requests: write
       contents: read
     steps:
       - uses: ailuracollective/actions/pull-request@v1
@@ -136,6 +149,52 @@ names no allowed type. It reports `skipped` and names `pr-title-conventional` as
 than a green tick for a validation that never happened. The closing line of the summary reads
 `All N checks passed (M skipped, not run for this pull request)`: a skip is counted as a
 non-failure, so a required status is still satisfied, but it is never folded into the passed count.
+
+### The status comment
+
+The job summary is only where somebody is looking while they are looking at the run. The same table
+is therefore published into the pull request conversation, where the author is already looking, and
+it is **one comment per action, updated in place**: the second run edits the first run's comment
+instead of adding another, and what stays on the pull request is always the current status. It is on
+by default for the PR policy, off by default for branch validation — that action exists so a consumer
+can validate branch names granting nothing at all — and either way is one input away:
+
+```yaml
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: ailuracollective/actions/pull-request@v1
+        with:
+          enable-status-comment: false
+```
+
+The body is the same rendering as the job summary — every check, its verdict and its detail, the
+counts, and a link to the workflow run — preceded by an invisible HTML marker naming the action:
+
+```
+<!-- ailuracollective-actions:status action=pull-request run=1700000000 -->
+```
+
+That marker is what makes the three properties below hold.
+
+- **One action never overwrites another's comment.** The key is the action's own directory name, and
+  two actions run in separate jobs on the same pull request. A pull request that adopts both the PR
+  policy and branch validation carries one comment per action, each with only its own checks.
+- **A comment anyone else wrote is never rewritten.** Only a body that *starts* with the marker
+  carrying a run id can have been written by this mechanism, so quoting the marker, or an earlier
+  comment, in a reply is inert: the quoted text is left exactly as it was.
+- **A slower run cannot overwrite a newer result.** Run ids only increase, so a run whose id is lower
+  than the one recorded in the comment it found publishes nothing and says so in the log. Without
+  that guard, the second of two concurrent runs to finish would leave its outdated table as the
+  current status.
+
+Publishing is an addition to the reporting, never a replacement for it: the job summary is written
+first and is what this action guarantees, and every comment failure — a refused token, an API error, a
+missing variable — is a warning that leaves the verdict untouched. A gate that cannot comment must
+still fail the pull requests it found defects in, and a gate that passes must not be failed by a
+comment. A refused token names `pull-requests: write` as the fix, and notes the case no permission
+block can widen: a `pull_request` trigger from a fork gets a read-only token, so fork pull requests
+get the job summary and no comment. The same limitation the Linear key already has.
 
 ### Two vocabularies, two inputs
 
@@ -304,6 +363,7 @@ branch-validation/action.yml        branch validation, one check
 branch-validation/branch-name.sh    its entry point, beside its own manifest
 lib/common.sh                  shared module: result recording, event gating, escaping, parsers
 lib/template.sh                shared module: the template resolution rule
+lib/comment.sh                 shared module: the sticky pull request comment, one per action
 lib/report.sh                  shared module: the job-summary table and the aggregated exit
 pull-request/action.yml        PR policy, five checks
 pull-request/<check>.sh        its entry points
@@ -394,7 +454,9 @@ One `../` hop, because an action's directory is a sibling of `lib/`. Invoke it a
 `bash ${{ github.action_path }}/my-check.sh`, not as a bare path, so a consumer who lost the
 executable bit on a clone or a zip download does not get a failure they cannot diagnose.
 
-**3. A report step**, unless the action is a single step with nothing to aggregate:
+**3. A report step**, unless the action is a single step with nothing to aggregate. On a
+`pull_request` trigger, the step also owns this action's sticky comment, which is what `PRV_ACTION`
+selects and what the `PR_NUMBER`/`GH_TOKEN`/`GH_REPO` trio points it at:
 
 ```yaml
     - name: Report
@@ -403,11 +465,24 @@ executable bit on a clone or a zip download does not get a failure they cannot d
       env:
         RESULTS_DIR: ${{ runner.temp }}/prv-results
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        PRV_ACTION: 'my-action'
+        PRV_PUBLISH_COMMENT: ${{ inputs.enable-status-comment }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
         PRV_TITLE: 'My action'
         PRV_CHECKS: 'my-check|my-other-check'
         PRV_LABELS: 'My check|My other check'
       run: bash ${{ github.action_path }}/../lib/report.sh
 ```
+
+`PRV_ACTION` is the action's own directory name, and it is the only thing telling this action's
+comment from another's: two actions run in separate jobs on the same pull request, and each updates
+only the comment carrying its own key. Omit it and nothing is published — the report says so as a
+warning naming the variable, rather than posting a comment no later run could find. `PR_NUMBER` is not
+a runner default, so it has to be passed; `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` are, and are read
+from the runner instead of from the manifest because they cannot be misconfigured.
 
 **4. `<name>/README.md`.** Usage, outputs, and what the action does *not* do.
 
@@ -423,6 +498,9 @@ manifest, syntax and discovery checks come for free.
 - User-controlled text in a workflow command is percent-escaped, and `%` is escaped first.
 - **No check script exits non-zero to signal failure.** Each records a verdict and exits 0; only
   `lib/report.sh` fails the job, which is what makes aggregation possible.
+- **Reporting is additive.** The job summary is written first and is the reporting this hub
+  guarantees; the status comment is published on top of it with its failures swallowed, so nothing
+  about the pull request is decided by whether a comment could be written.
 - A check that records nothing is reported as `error`, never as a pass.
 - Every script uses `set -euo pipefail`.
 - Comments are one line, and only where a competent editor would otherwise get it wrong: security
@@ -447,6 +525,8 @@ duplicates.
 - **One action needs permissions another must not have.** They cannot share a caller's single token
   block, and least-privilege guidance stops being expressible. Triage and the PR policy are separated
   for exactly this reason, and they are still in one repository because that cost is only paid when a
-  consumer adopts both.
+  consumer adopts both. Branch validation is the clearest case: its check reads nothing, so it grants
+  nothing — and the status comment that would need `pull-requests: write` is off by default there for
+  that reason.
 
 Neither is true today.

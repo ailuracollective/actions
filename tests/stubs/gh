@@ -5,6 +5,15 @@
 #   GH_STUB_ISSUE_LABELS    comma-separated labels returned for `gh api repos/…/issues/<n>`
 #   GH_STUB_ISSUE_API       `ok` (default) | `missing` | `403`
 #   GH_STUB_ISSUE_EDIT      `ok` (default) | `403` | `fail`
+#
+# The sticky status comment's endpoints:
+#   GH_STUB_COMMENTS_DIR      existing comments, one file each: `<id>.body` holds the raw body. A
+#                             store a test can count and diff without a JSON parser of its own, and
+#                             a fixture a test seeds with `printf`.
+#   GH_STUB_COMMENT_API       `ok` (default) | `403` | `fail`, applied to every comment call
+#   GH_STUB_COMMENT_CAPTURE   path that receives one `METHOD<TAB>PATH` line per comment call
+#   GH_STUB_COMMENT_PER_PAGE  overrides the page size the code asked for, so a test can force
+#                             several pages and prove the lookup reads every one of them
 set -uo pipefail
 
 args=("$@")
@@ -29,6 +38,41 @@ is_issue_read() {
   return 1
 }
 
+# A single comment (`repos/…/issues/comments/<id>`) or the collection on a pull request or issue
+# (`repos/…/issues/<n>/comments`). Tested before is_issue_read, whose pattern matches the collection
+# too: a collection read must not be answered with an issue's labels.
+is_comment_api() {
+  local a
+  for a in "${args[@]}"; do
+    # The query string is stripped before matching: `?per_page=100` is the caller's, and matching
+    # against the whole argument would miss every read of the collection.
+    case ${a%%\?*} in
+      */issues/comments/*) return 0 ;;
+      */issues/[0-9]*/comments) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# Raw text to the inside of a JSON string. Backslashes first, or the escapes the later two rules add
+# get escaped in turn — the same ordering trap lib/common.sh documents for workflow commands.
+# The `sed` rules run per line and `awk` rejoins the lines, so a newline becomes `\n` rather than
+# ending the string.
+json_string() {
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' \
+    | awk 'BEGIN{ORS=""} {if(NR>1) printf "\\n"; print}'
+}
+
+comment_ids() {
+  local f
+  [ -d "${GH_STUB_COMMENTS_DIR:-}" ] || return 0
+  for f in "$GH_STUB_COMMENTS_DIR"/*.body; do
+    [ -e "$f" ] || continue
+    f=${f##*/}
+    printf '%s\n' "${f%.body}"
+  done | sort -n
+}
+
 # `gh issue edit <n> --repo <r> --add-label <l>`
 if [ "${args[0]:-}" = 'issue' ] && [ "${args[1]:-}" = 'edit' ]; then
   case ${GH_STUB_ISSUE_EDIT:-ok} in
@@ -42,6 +86,106 @@ if [ "${args[0]:-}" = 'issue' ] && [ "${args[1]:-}" = 'edit' ]; then
       exit 1
       ;;
   esac
+fi
+
+if [ "${args[0]:-}" = 'api' ] && is_comment_api; then
+  method=GET
+  body=''
+  path=''
+  i=1
+  while [ "$i" -lt "${#args[@]}" ]; do
+    case ${args[$i]} in
+      --method) method=${args[$((i + 1))]:-GET}; i=$((i + 2)) ;;
+      -F | -f | --raw-field | --field)
+        body=${args[$((i + 1))]:-}
+        body=${body#*=}
+        i=$((i + 2))
+        ;;
+      -F* | --raw-field* | --field*) body=${args[$i]#*=}; i=$((i + 1)) ;;
+      -H | --header | --input) i=$((i + 2)) ;;
+      -H* | --header* | --paginate | --silent) i=$((i + 1)) ;;
+      -*) i=$((i + 1)) ;;
+      *) path=${args[$i]}; i=$((i + 1)) ;;
+    esac
+  done
+  # `gh api repos/…/issues/12/comments?per_page=100`: the query is the caller's, not part of the path.
+  path=${path%%\?*}
+  method=$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')
+
+  if [ -n "${GH_STUB_COMMENT_CAPTURE:-}" ]; then
+    printf '%s\t%s\n' "$method" "$path" >> "$GH_STUB_COMMENT_CAPTURE"
+  fi
+
+  case ${GH_STUB_COMMENT_API:-ok} in
+    403)
+      echo 'HTTP 403: Resource not accessible by integration' >&2
+      exit 1
+      ;;
+    fail)
+      echo 'HTTP 500: Internal Server Error' >&2
+      exit 1
+      ;;
+  esac
+
+  dir=${GH_STUB_COMMENTS_DIR:-}
+  last=$(comment_ids | tail -n 1)
+
+  case $path in
+    */issues/comments/*)
+      id=${path##*/}
+      case $method in
+        PATCH)
+          if [ ! -f "$dir/$id.body" ]; then
+            echo 'gh: Not Found (HTTP 404)' >&2
+            exit 1
+          fi
+          printf '%s' "$body" > "$dir/$id.body"
+          ;;
+        *)
+          if [ ! -f "$dir/$id.body" ]; then
+            echo 'gh: Not Found (HTTP 404)' >&2
+            exit 1
+          fi
+          ;;
+      esac
+      printf '{"id":%s,"body":"%s"}\n' "$id" "$(json_string < "$dir/$id.body")"
+      ;;
+    */issues/*/comments)
+      case $method in
+        POST)
+          if [ -z "$dir" ]; then
+            echo 'gh-stub: GH_STUB_COMMENTS_DIR is unset, so there is nowhere to store the comment' >&2
+            exit 1
+          fi
+          # A new id above every existing one, as GitHub does: the comment being created is the
+          # newest of them, which is the one a later run finds.
+          id=$(( ${last:-999} + 1 ))
+          mkdir -p "$dir"
+          printf '%s' "$body" > "$dir/$id.body"
+          printf '{"id":%s,"body":"%s"}\n' "$id" "$(json_string < "$dir/$id.body")"
+          ;;
+        *)
+          # One array per page, exactly as `--paginate` prints them, so a test that lowers the page
+          # size proves the lookup flattens pages instead of reading only the first.
+          per_page=${GH_STUB_COMMENT_PER_PAGE:-100}
+          n=0
+          for id in $(comment_ids); do
+            if [ $((n % per_page)) -eq 0 ]; then
+              [ "$n" -eq 0 ] || printf ']\n'
+              printf '['
+            else
+              printf ','
+            fi
+            printf '{"id":%s,"body":"%s"}' "$id" "$(json_string < "$dir/$id.body")"
+            n=$((n + 1))
+          done
+          [ "$n" -eq 0 ] || printf ']'
+          printf '\n'
+          ;;
+      esac
+      ;;
+  esac
+  exit 0
 fi
 
 if [ "${args[0]:-}" = 'api' ] && is_contents_read; then
